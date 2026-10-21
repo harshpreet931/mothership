@@ -78,9 +78,18 @@ public actor AgentEngine: AgentEngineProtocol {
         var title: String?
         var lastMessage: String?
         var permission: String?
+        var generated: String?
     }
+    /// On-device titles and summaries (`configuration.textGenerator`).
+    var generatedText: GeneratedTextQueue?
+    var generationTask: Task<Void, Never>?
+    /// What was last asked of the model per session, so unchanged inputs aren't re-sent.
+    var requestedTitles: [AgentSessionKey: String] = [:]
+    var requestedSummaries: [AgentSessionKey: String] = [:]
+    /// Background history loads in flight (generation waits for them).
+    var historyLoads = 0
     var attentionGate = AttentionGate()
-    public private(set) var metrics = EngineMetrics()
+    public internal(set) var metrics = EngineMetrics()
 
     struct SurfaceState: Sendable {
         var workspace: WorkspaceID
@@ -158,6 +167,8 @@ public actor AgentEngine: AgentEngineProtocol {
         tasks.removeAll()
         leaseTask?.cancel()
         leaseTask = nil
+        generationTask?.cancel()
+        generationTask = nil
         fileWatcher?.finish()
         fileWatcher = nil
         vnodeWatcher?.close()
@@ -209,6 +220,8 @@ public actor AgentEngine: AgentEngineProtocol {
     func flush() {
         flushTask = nil
         lastFlush = Date()
+        // Something changed (flushes follow markDirty): maybe a session's opening.
+        scheduleGeneration()
         guard !subscribers.withLock({ $0.isEmpty }) else { return }
         let sessions = snapshot()
         // Diff before emitting: an identical snapshot changes nothing downstream.
@@ -238,12 +251,13 @@ public actor AgentEngine: AgentEngineProtocol {
 
     func summary(for record: SessionRecord) -> String? {
         let session = record.session
+        let generated = Self.generatedSummary(for: record)
         let inputs = SummaryInputs(
             state: session.state, tool: record.currentTool, target: record.currentTarget, title: session.title,
-            lastMessage: session.lastAssistantMessage, permission: session.pendingPermission?.summary
+            lastMessage: session.lastAssistantMessage, permission: session.pendingPermission?.summary, generated: generated
         )
         if let cached = summaryCache[record.key], cached.inputs == inputs { return cached.summary }
-        let summary = configuration.summarizer.summary(for: record)
+        let summary = generated ?? configuration.summarizer.summary(for: record)
         summaryCache[record.key] = (inputs, summary)
         return summary
     }
@@ -729,6 +743,7 @@ public actor AgentEngine: AgentEngineProtocol {
             for path in pending { apply(Self.peekSignals(await ingestor.peek(path: path)), live: false) }
             let clock = ContinuousClock()
             let started = clock.now
+            historyLoads += 1
             tasks.append(Task { [weak self] in
                 for path in pending { await self?.trackTranscript(path) }
                 await self?.noteHistoryLoaded(clock.now - started)
@@ -815,6 +830,8 @@ public actor AgentEngine: AgentEngineProtocol {
     }
 
     func noteHistoryLoaded(_ duration: Duration) {
+        historyLoads = max(0, historyLoads - 1)
+        if historyLoads == 0 { scheduleGeneration() }
         if metrics.initialHistoryLoad == nil { metrics.initialHistoryLoad = duration }
         engineLog.notice("Initial transcript history loaded in \(duration.components.seconds, privacy: .public)s")
     }

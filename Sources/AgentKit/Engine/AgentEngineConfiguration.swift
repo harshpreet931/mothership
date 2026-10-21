@@ -46,6 +46,14 @@ public struct AgentEngineConfiguration: Sendable {
     public var probeCLIVersions: Bool
     /// Replaces the process scanner (tests and tools): the agent roots a scan would find.
     public var processProvider: (@Sendable (ScanScope) -> [RootProcess])?
+    /// On-device titles and reply summaries (the app plugs in Foundation Models). Nil, or an
+    /// unavailable model, keeps the heuristic titles and summaries.
+    public var textGenerator: SessionTextGenerator?
+    /// Where generated titles are cached across launches (by input fingerprint).
+    public var generatedTextCache: URL?
+    /// Quiet time after a session's opening changes before a title is generated, so a burst
+    /// (history loading, a fast first turn) costs one model call.
+    public var generationDelay: TimeInterval = 3
 
     public init(
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
@@ -130,6 +138,9 @@ public struct EngineMetrics: Sendable, Equatable {
     public var watchedPaths = 0
     /// Per-second pane scans skipped because the app's process tree hadn't changed.
     public var skippedSurfaceScans = 0
+    /// Generated titles and summaries applied to sessions.
+    public var generatedTitles = 0
+    public var generatedSummaries = 0
 
     public var scans: Int { systemScans + surfaceScans }
 
