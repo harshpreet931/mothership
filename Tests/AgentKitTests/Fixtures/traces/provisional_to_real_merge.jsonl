@@ -1,0 +1,10 @@
+# A process seen before any hook gets a provisional pid: key. The first hook with a real
+# session id promotes it (by surface here) instead of creating a duplicate; if both a real
+# (transcript-discovered) and a provisional session exist, they are merged.
+{"at":0,"tier":"process","kind":"claude","pid":900,"surface":"A","event":"processSeen","expect":"idle","expectKey":"claude/pid:900","expectCount":1}
+{"at":1,"tier":"terminal","kind":"claude","pid":900,"event":"observed","state":"working","expect":"working","expectKey":"claude/pid:900"}
+{"at":2,"tier":"hook","kind":"claude","session":"real-9","surface":"A","event":"prompt","text":"hello","expect":"working","expectKey":"claude/real-9","expectCount":1,"expectPID":900}
+{"at":3,"tier":"transcript","kind":"claude","session":"real-10","event":"prompt","text":"other task","expect":"working","expectKey":"claude/real-10","expectCount":2}
+{"at":4,"tier":"process","kind":"claude","pid":901,"event":"processSeen","expectKey":"claude/pid:901","expect":"idle","expectCount":3}
+{"at":5,"tier":"hook","kind":"claude","session":"real-10","pid":901,"event":"toolStart","tool":"Bash","summary":"ls","expect":"working:Bash","expectKey":"claude/real-10","expectCount":2,"expectPID":901}
+{"at":6,"tier":"process","kind":"claude","pid":901,"event":"processExited","expect":"ended","expectKey":"claude/real-10"}

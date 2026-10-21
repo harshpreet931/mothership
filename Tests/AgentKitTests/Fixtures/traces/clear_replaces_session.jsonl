@@ -1,0 +1,7 @@
+# `/clear` in Claude starts a new session id in the same process: the old one ends.
+{"at":0,"tier":"hook","kind":"claude","session":"a","pid":50,"event":"sessionStart","source":"startup","expect":"idle","expectKey":"claude/a"}
+{"at":1,"tier":"hook","kind":"claude","session":"a","event":"prompt","text":"first","expect":"working"}
+{"at":2,"tier":"hook","kind":"claude","session":"a","event":"stop","expect":"idle"}
+{"at":3,"tier":"hook","kind":"claude","session":"b","pid":50,"event":"sessionStart","source":"clear","expect":"idle","expectKey":"claude/b","expectCount":2,"expectPID":50}
+{"at":3.5,"event":"check","expectKey":"claude/a","expect":"ended"}
+{"at":4,"tier":"process","kind":"claude","pid":50,"event":"processSeen","expect":"idle","expectKey":"claude/b","expectCount":2}

@@ -1,3 +1,4 @@
+import AgentKit
 import AppKit
 import ShipModel
 import ShipProtocol
@@ -14,9 +15,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var isDemo: Bool { environment["MOTHERSHIP_DEMO"] == "1" }
 
-    /// The agent engine. The lead swaps `NoopAgentEngine()` for `AgentKit.AgentEngine`.
     private func makeAgentEngine() -> any AgentEngineProtocol {
-        isDemo ? DemoAgentEngine() : NoopAgentEngine()
+        if isDemo { return DemoAgentEngine() }
+        var configuration = AgentEngineConfiguration.standard
+        // A held hook hides the agent's own prompt; for a session in VS Code or iTerm that
+        // reads as a frozen agent, so only hold prompts for panes Mothership hosts.
+        configuration.holdPermissionsForExternalSessions = false
+        return AgentEngine(configuration: configuration)
     }
 
     func applicationDidFinishLaunching(_: Notification) {

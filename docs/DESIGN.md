@@ -311,3 +311,34 @@ user overrides it.
 - Bordered text fields.
 - Spinners where a shimmer or arc reads calmer.
 - Animation while typing.
+
+## 11. Logo: "Arch M"
+
+Two arches with three legs read as a lowercase **m**, and also as a saucer's dome
+hovering over its glowing disc. It pairs with the lowercase wordmark `mothership`.
+Exploration canvas: https://claude.ai/artifact/5J2aE3eeg7K9Hpt9Hrkbvt (board 04).
+
+**Geometry** (120 × 120 viewBox; the mark spans y 33–89, so shift it up 1 to center it optically):
+
+```
+arches: M28 68 V54 A16 16 0 0 1 60 54 V68 M60 54 A16 16 0 0 1 92 54 V68
+        stroke 10, round caps, round joins, no fill
+disc:   rect x18 y80 w84 h9 rx4.5        (the 7-unit gap above it is the "hover")
+```
+
+| Context | Arches | Disc | Ground |
+|---|---|---|---|
+| App icon (primary) | `#F4F5F7` | horizontal gradient `#5B8FD6` → `#C6DBFF` | ink tile `#0D0E11` + top radial highlight white @ 14 % + inner top hairline white @ 12 % |
+| Sky (Day surfaces) | ink `#0D0E11` | white | the sky |
+| Light UI (on white) | ink | gradient `#3F74C4` → `#8DB4F0` | white |
+| Dark UI | `#F4F5F7` | gradient `#5B8FD6` → `#C6DBFF` | ink |
+| Mono ≤ 32 px (menu bar, favicons, template images) | stroke **12** | height **11**, rx 5.5 | single color (`currentColor`/template) |
+
+- **Wordmark:** `mothership` in lowercase, SF Pro Display Medium, tracking −3.5 %. The
+  mark's height is about 1.45 × the x-height, with a gap of 0.4 × the mark's width.
+- **Icon:** the mark fills about 62 % of the tile width. The tile uses the macOS 26
+  rounded-rect icon shape. Don't add drop shadows inside the tile.
+- **Motion (optional, ≤ 600 ms, once):** on launch or Home, the disc draws in from the
+  center outward, then the arches rise 2 units into place.
+- **Don't:** recolor the arches with the gradient, outline the mark, tilt it, or put the
+  amber attention color in the logo. Amber means "needs you", never "brand".

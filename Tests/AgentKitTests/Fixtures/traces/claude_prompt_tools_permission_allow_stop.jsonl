@@ -1,0 +1,16 @@
+# Claude Code: process seen → SessionStart (provisional key promoted) → prompt → 3 tools →
+# permission (held) → allow → stop. The surface isn't watched, so needs-input and finish set unread.
+{"at":0,"tier":"process","kind":"claude","pid":4242,"surface":"A","event":"processSeen","expect":"idle","expectKey":"claude/pid:4242"}
+{"at":1,"tier":"hook","kind":"claude","session":"s-1","pid":4242,"event":"sessionStart","source":"startup","expect":"idle","expectKey":"claude/s-1","expectCount":1,"expectPID":4242}
+{"at":2,"tier":"hook","kind":"claude","session":"s-1","event":"prompt","text":"Fix the failing tests","expect":"working","expectTitle":"Fix the failing tests"}
+{"at":3,"tier":"hook","kind":"claude","session":"s-1","event":"toolStart","tool":"Read","summary":"Tests/FooTests.swift","expect":"working:Read"}
+{"at":4,"tier":"hook","kind":"claude","session":"s-1","event":"toolEnd","tool":"Read","expect":"working"}
+{"at":5,"tier":"hook","kind":"claude","session":"s-1","event":"toolStart","tool":"Edit","summary":"Sources/Foo.swift","expect":"working:Edit"}
+{"at":6,"tier":"hook","kind":"claude","session":"s-1","event":"toolEnd","tool":"Edit","expect":"working"}
+{"at":7,"tier":"hook","kind":"claude","session":"s-1","event":"toolStart","tool":"Bash","summary":"swift test","expect":"working:Bash","expectUnread":false}
+{"at":8,"tier":"hook","kind":"claude","session":"s-1","event":"permission","tool":"Bash","summary":"swift test","expect":"needsInput:permission","expectUnread":true,"expectActivity":"Bash: swift test"}
+{"at":9,"event":"read","expectKey":"claude/s-1","expectUnread":false}
+{"at":20,"tier":"hook","kind":"claude","session":"s-1","event":"toolStart","tool":"Bash","summary":"swift test","expect":"working:Bash","expectUnread":false}
+{"at":25,"tier":"hook","kind":"claude","session":"s-1","event":"toolEnd","tool":"Bash","expect":"working"}
+{"at":30,"tier":"hook","kind":"claude","session":"s-1","event":"stop","text":"All 42 tests pass.","expect":"idle","expectUnread":true,"expectLastMessage":"All 42 tests pass."}
+{"at":31,"tier":"hook","kind":"claude","session":"s-1","event":"sessionEnd","expect":"ended","expectUnread":true}
