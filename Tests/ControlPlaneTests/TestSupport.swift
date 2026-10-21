@@ -12,9 +12,27 @@ func tempSocketPath(_ tag: String = "t") -> String {
     "/tmp/mship-\(tag)-\(UUID().uuidString.prefix(8)).sock"
 }
 
+/// Runs blocking work (poll, waitUntilExit) on a GCD thread. Blocking the cooperative pool
+/// from many parallel tests starves the server's handler tasks and deadlocks until timeouts.
+func offPool<T: Sendable>(_ body: @escaping @Sendable () throws -> T) async throws -> T {
+    try await withCheckedThrowingContinuation { continuation in
+        DispatchQueue.global().async { continuation.resume(with: Result { try body() }) }
+    }
+}
+
 /// A bare line-oriented socket client, so tests can pipeline several requests on one
 /// connection and send malformed bytes the real client never would.
-final class RawConnection {
+final class RawConnection: @unchecked Sendable {
+    // @unchecked: each test uses its connection from one task at a time.
+
+    func next(timeout: Double = 3) async -> JSONValue? {
+        (try? await offPool { self.readJSON(timeout: timeout) }) ?? nil
+    }
+
+    func nextLine(timeout: Double = 3) async -> String? {
+        (try? await offPool { self.readLine(timeout: timeout) }) ?? nil
+    }
+
     let fd: Int32
     private var buffer: [UInt8] = []
 

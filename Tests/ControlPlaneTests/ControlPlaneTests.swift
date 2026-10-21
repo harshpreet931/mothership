@@ -33,11 +33,11 @@ struct ControlServerTests {
         }
         try await withServer(router) { _, path in
             let client = ControlClient(socketPath: path, caller: CallerContext())
-            let ok: OKResult = try client.call(.notify, NotifyParams(title: "Build done", body: "All green"))
+            let ok: OKResult = try await client.callAsync(.notify, NotifyParams(title: "Build done", body: "All green"))
             #expect(ok.ok)
             #expect(await received.value == NotifyParams(title: "Build done", body: "All green"))
 
-            let pong: PingResult = try client.call(.ping, OKResult())
+            let pong: PingResult = try await client.callAsync(.ping, OKResult())
             #expect(pong.pid == getpid())
             #expect(pong.version == ShipInfo.version)
         }
@@ -61,7 +61,7 @@ struct ControlServerTests {
         let path = directory + "/nested/c.sock"
         let server = ControlServer(socketPath: path, handler: ControlRouter())
         try await server.start()
-        let pong: PingResult = try ControlClient(socketPath: path).call(.ping, OKResult())
+        let pong: PingResult = try await ControlClient(socketPath: path).callAsync(.ping, OKResult())
         #expect(pong.ok)
         let attributes = try FileManager.default.attributesOfItem(atPath: directory + "/nested")
         #expect((attributes[.posixPermissions] as? Int) == 0o700)
@@ -82,18 +82,18 @@ struct ControlServerTests {
             connection.sendLine(request(2, "ping"))
 
             // The ping on the same connection answers while the hook is held.
-            let first = try #require(connection.readJSON())
+            let first = try #require(await connection.next())
             #expect(first.idInt == 2)
             #expect(first["result"]?["ok"]?.boolValue == true)
 
             // And so does a different connection.
             let started = ContinuousClock.now
-            let pong: PingResult = try ControlClient(socketPath: path).call(.ping, OKResult(), timeout: .seconds(1))
+            let pong: PingResult = try await ControlClient(socketPath: path).callAsync(.ping, OKResult(), timeout: .seconds(1))
             #expect(pong.ok)
             #expect(ContinuousClock.now - started < .milliseconds(500))
 
             await gate.open()
-            let second = try #require(connection.readJSON())
+            let second = try #require(await connection.next())
             #expect(second.idInt == 1)
             let reply = try #require(second["result"]).decode(HookReply.self)
             #expect(reply.stdout == "decided PermissionRequest")
@@ -111,14 +111,14 @@ struct ControlServerTests {
             let connection = try RawConnection(path: path)
             connection.sendLine(line(["jsonrpc": "2.0", "method": "test.note", "params": .object([:])]))
             connection.sendLine(request(7, "ping"))
-            let response = try #require(connection.readJSON())
+            let response = try #require(await connection.next())
             #expect(response.idInt == 7)
             #expect(await eventually { await counter.value == 1 })
-            #expect(connection.readLine(timeout: 0.2) == nil)
+            #expect(await connection.nextLine(timeout: 0.2) == nil)
 
             // A notification to an unknown method is silently dropped too.
             connection.sendLine(line(["jsonrpc": "2.0", "method": "nope"]))
-            #expect(connection.readLine(timeout: 0.2) == nil)
+            #expect(await connection.nextLine(timeout: 0.2) == nil)
         }
     }
 
@@ -126,21 +126,21 @@ struct ControlServerTests {
         try await withServer { _, path in
             let connection = try RawConnection(path: path)
             connection.sendLine("{this is not json")
-            let parseError = try #require(connection.readJSON())
+            let parseError = try #require(await connection.next())
             #expect(parseError.errorCode == -32700)
             #expect(parseError["id"] == .null)
 
             connection.sendLine(#"{"jsonrpc":"2.0","id":5}"#)
-            let invalid = try #require(connection.readJSON())
+            let invalid = try #require(await connection.next())
             #expect(invalid.errorCode == -32600)
             #expect(invalid.idInt == 5)
 
             connection.sendLine(#"{"jsonrpc":"1.0","id":6,"method":"ping"}"#)
-            #expect(connection.readJSON()?.errorCode == -32600)
+            #expect(await connection.next()?.errorCode == -32600)
 
             connection.sendLine("")  // blank lines are ignored
             connection.sendLine(request(9, "ping") + "\r")  // CRLF tolerated
-            let pong = try #require(connection.readJSON())
+            let pong = try #require(await connection.next())
             #expect(pong.idInt == 9)
             #expect(pong["error"] == nil)
         }
@@ -152,20 +152,20 @@ struct ControlServerTests {
             let padding = String(repeating: "x", count: 4000)
             // Arrives complete in one write.
             connection.sendLine(request(1, "ping", .object(["pad": .string(padding)])))
-            let rejected = try #require(connection.readJSON())
+            let rejected = try #require(await connection.next())
             #expect(rejected.errorCode == -32600)
             #expect(rejected["error"]?["message"]?.stringValue?.contains("limit") == true)
 
             connection.sendLine(request(2, "ping"))
-            #expect(connection.readJSON()?.idInt == 2)
+            #expect(await connection.next()?.idInt == 2)
 
             // Arrives in pieces: rejected as soon as it passes the limit, the tail is discarded.
             connection.send(#"{"jsonrpc":"2.0","id":3,"method":"ping","params":{"pad":""#)
             connection.send(padding)
-            #expect(connection.readJSON()?.errorCode == -32600)
+            #expect(await connection.next()?.errorCode == -32600)
             connection.send(padding + "\"}}\n")
             connection.sendLine(request(4, "ping"))
-            let after = try #require(connection.readJSON())
+            let after = try #require(await connection.next())
             #expect(after.idInt == 4)
             #expect(after["error"] == nil)
         }
@@ -175,12 +175,12 @@ struct ControlServerTests {
         try await withServer { _, path in
             let connection = try RawConnection(path: path)
             connection.sendLine("[\(request(1, "ping")),\(line(["jsonrpc": "2.0", "method": "ping"])),\(request(2, "missing"))]")
-            let batch = try #require(connection.readJSON()?.arrayValue)
+            let batch = try #require(await connection.next()?.arrayValue)
             #expect(batch.count == 2)
             #expect(batch[0].idInt == 1)
             #expect(batch[1].errorCode == -32601)
             connection.sendLine("[]")
-            #expect(connection.readJSON()?.errorCode == -32600)
+            #expect(await connection.next()?.errorCode == -32600)
         }
     }
 
@@ -192,7 +192,7 @@ struct ControlServerTests {
             return OKResult()
         }
         try await withServer(router) { _, path in
-            _ = try ControlClient(socketPath: path).request("whoami")
+            _ = try await ControlClient(socketPath: path).requestAsync("whoami")
             let peer = try #require(await seen.value)
             #expect(peer.pid == getpid())
             #expect(peer.uid == geteuid())
@@ -210,7 +210,7 @@ struct ControlServerTests {
         }
         try await withServer(router) { _, path in
             let caller = CallerContext(surface: SurfaceID(), workspace: WorkspaceID())
-            _ = try ControlClient(socketPath: path, caller: caller).request("echo", params: .object(["a": .number(1)]))
+            _ = try await ControlClient(socketPath: path, caller: caller).requestAsync("echo", params: .object(["a": .number(1)]))
             #expect(await seen.value?.caller == caller)
             #expect(await params.value == .object(["a": .number(1)]))
         }
@@ -233,7 +233,7 @@ struct ControlServerTests {
 
         let server = ControlServer(socketPath: path, handler: ControlRouter())
         try await server.start()
-        let pong: PingResult = try ControlClient(socketPath: path).call(.ping, OKResult())
+        let pong: PingResult = try await ControlClient(socketPath: path).callAsync(.ping, OKResult())
         #expect(pong.ok)
         await server.stop()
     }
@@ -245,7 +245,7 @@ struct ControlServerTests {
                 try await intruder.start()
             }
             // The original keeps serving.
-            let pong: PingResult = try ControlClient(socketPath: path).call(.ping, OKResult())
+            let pong: PingResult = try await ControlClient(socketPath: path).callAsync(.ping, OKResult())
             #expect(pong.ok)
         }
     }
@@ -299,13 +299,13 @@ struct ControlServerTests {
         try await server.start()
         let connection = try RawConnection(path: path)
         connection.sendLine(request(1, "ping"))
-        #expect(connection.readJSON()?.idInt == 1)
+        #expect(await connection.next()?.idInt == 1)
         await server.stop()
         let stopped = ContinuousClock.now
-        #expect(connection.readLine(timeout: 2) == nil)  // EOF, promptly (not a timeout)
+        #expect(await connection.nextLine(timeout: 2) == nil)  // EOF, promptly (not a timeout)
         #expect(ContinuousClock.now - stopped < .milliseconds(500))
         try await server.start()
-        let pong: PingResult = try ControlClient(socketPath: path).call(.ping, OKResult())
+        let pong: PingResult = try await ControlClient(socketPath: path).callAsync(.ping, OKResult())
         #expect(pong.ok)
         await server.stop()
     }
@@ -351,8 +351,8 @@ struct ControlClientTests {
         try await withServer(router) { _, path in
             let client = ControlClient(socketPath: path)
             let start = ContinuousClock.now
-            #expect(throws: ControlClientError.timedOut) {
-                try client.request("slow", timeout: .milliseconds(150))
+            await #expect(throws: ControlClientError.timedOut) {
+                try await client.requestAsync("slow", timeout: .milliseconds(150))
             }
             #expect(ContinuousClock.now - start < .seconds(1))
         }
@@ -380,8 +380,8 @@ struct ControlClientTests {
 
     @Test func serverErrorsSurfaceAsRPCErrors() async throws {
         try await withServer { _, path in
-            #expect(throws: ControlClientError.server(.methodNotFound("nope"))) {
-                try ControlClient(socketPath: path).request("nope")
+            await #expect(throws: ControlClientError.server(.methodNotFound("nope"))) {
+                try await ControlClient(socketPath: path).requestAsync("nope")
             }
         }
     }

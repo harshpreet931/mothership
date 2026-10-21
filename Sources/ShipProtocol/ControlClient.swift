@@ -102,7 +102,7 @@ public final class ControlClient: Sendable {
         var nextID = 1
     }
 
-    public init(socketPath: String = ShipPaths.socket.path, caller: CallerContext = .fromEnvironment()) {
+    public init(socketPath: String = ControlSocketLocation.resolve(), caller: CallerContext = .fromEnvironment()) {
         self.socketPath = socketPath
         self.caller = caller
     }
@@ -338,6 +338,24 @@ extension ControlClient {
             self.cancel()
         }
         return try result.get()
+    }
+
+    /// Typed async convenience; see `call(_:_:as:timeout:)`.
+    public func callAsync<P: Encodable, R: Decodable>(
+        _ method: ControlMethod, _ params: P, as type: R.Type = R.self, timeout: Duration? = .seconds(5)
+    ) async throws(ControlClientError) -> R {
+        let encoded: JSONValue
+        do {
+            encoded = try JSONValue(encoding: params)
+        } catch {
+            throw .encodingFailed(String(describing: error))
+        }
+        let result = try await requestAsync(method.rawValue, params: encoded, timeout: timeout)
+        do {
+            return try result.decode(R.self)
+        } catch {
+            throw .malformedResponse("couldn't decode \(R.self): \(error)")
+        }
     }
 }
 
