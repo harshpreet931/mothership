@@ -35,24 +35,30 @@ struct SunPosition: Equatable, Sendable {
     }
 }
 
-/// Approximate coordinates without asking for location: longitude from the UTC offset,
-/// latitude from a few well-known zones (else 20°N).
+/// Approximate coordinates without asking for location: a small table of time zones
+/// (where most people in that zone live), else the zone's meridian from its UTC offset and
+/// a regional latitude (20°N by default).
 enum ApproximateLocation {
     static func current(timeZone: TimeZone = .current, date: Date = Date()) -> (latitude: Double, longitude: Double) {
+        if let known = byZone[timeZone.identifier] { return known }
         let longitude = Double(timeZone.secondsFromGMT(for: date)) / 3600 * 15
-        return (latitudeByZone[timeZone.identifier] ?? latitudeByRegion(timeZone.identifier), longitude)
+        return (latitudeByRegion(timeZone.identifier), longitude)
     }
 
-    private static let latitudeByZone: [String: Double] = [
-        "Asia/Kolkata": 20, "Asia/Calcutta": 20, "Asia/Tokyo": 35.7, "Asia/Shanghai": 31.2,
-        "Asia/Singapore": 1.3, "Asia/Dubai": 25.2, "Asia/Seoul": 37.6, "Asia/Hong_Kong": 22.3,
-        "Europe/London": 51.5, "Europe/Paris": 48.9, "Europe/Berlin": 52.5, "Europe/Madrid": 40.4,
-        "Europe/Amsterdam": 52.4, "Europe/Stockholm": 59.3, "Europe/Moscow": 55.8,
-        "America/New_York": 40.7, "America/Chicago": 41.9, "America/Denver": 39.7,
-        "America/Los_Angeles": 34.1, "America/Toronto": 43.7, "America/Mexico_City": 19.4,
-        "America/Sao_Paulo": -23.6, "America/Buenos_Aires": -34.6, "Australia/Sydney": -33.9,
-        "Australia/Melbourne": -37.8, "Pacific/Auckland": -36.8, "Africa/Johannesburg": -26.2,
-        "Africa/Lagos": 6.5, "Africa/Cairo": 30.0,
+    /// (latitude, longitude). Offsets alone are off by up to ~20° in places (Madrid, India,
+    /// China), which moves sunset by an hour.
+    private static let byZone: [String: (latitude: Double, longitude: Double)] = [
+        "Asia/Kolkata": (20, 77.5), "Asia/Calcutta": (20, 77.5), "Asia/Tokyo": (35.7, 139.7),
+        "Asia/Shanghai": (31.2, 116.4), "Asia/Singapore": (1.3, 103.8), "Asia/Dubai": (25.2, 55.3),
+        "Asia/Seoul": (37.6, 127), "Asia/Hong_Kong": (22.3, 114.2), "Asia/Jakarta": (-6.2, 106.8),
+        "Europe/London": (51.5, -0.1), "Europe/Dublin": (53.3, -6.3), "Europe/Paris": (48.9, 2.4),
+        "Europe/Berlin": (52.5, 13.4), "Europe/Madrid": (40.4, -3.7), "Europe/Amsterdam": (52.4, 4.9),
+        "Europe/Stockholm": (59.3, 18.1), "Europe/Moscow": (55.8, 37.6), "Europe/Lisbon": (38.7, -9.1),
+        "America/New_York": (40.7, -74), "America/Chicago": (41.9, -87.6), "America/Denver": (39.7, -105),
+        "America/Los_Angeles": (34.1, -118.2), "America/Toronto": (43.7, -79.4), "America/Mexico_City": (19.4, -99.1),
+        "America/Sao_Paulo": (-23.6, -46.6), "America/Buenos_Aires": (-34.6, -58.4), "Australia/Sydney": (-33.9, 151.2),
+        "Australia/Melbourne": (-37.8, 145), "Pacific/Auckland": (-36.8, 174.8), "Africa/Johannesburg": (-26.2, 28),
+        "Africa/Lagos": (6.5, 3.4), "Africa/Cairo": (30, 31.2),
     ]
 
     private static func latitudeByRegion(_ identifier: String) -> Double {
