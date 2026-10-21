@@ -134,7 +134,7 @@ final class LivingSkyView: NSView {
         glow.colors = [palette.glow.cgColor(alpha: strength), palette.glow.cgColor(alpha: strength * 0.42), palette.glow.cgColor(alpha: 0)]
         night.opacity = Float(palette.stars)
         // The moon waits for real darkness, then comes up with the stars.
-        moon.opacity = Float(min(max((palette.stars - 0.45) / 0.45, 0), 1))
+        moon.opacity = Float(min(max((palette.stars - 0.8) / 0.15, 0), 1))
         cloudDeck.opacity = Float(palette.clouds)
         if cloudTint.map({ $0.distance(to: palette.cloudTint) > 0.012 }) ?? true {
             cloudTint = palette.cloudTint

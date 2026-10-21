@@ -141,7 +141,10 @@ final class AppModel {
         portsTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.refreshPortsIfVisible()
-                try? await Task.sleep(for: .seconds(3))
+                // Every 5 s while you're here, every 15 s in the background (a process-table
+                // walk each time); activation refreshes at once.
+                let active = self?.appIsActive ?? false
+                try? await Task.sleep(for: .seconds(active ? 5 : 15))
             }
         }
     }
@@ -570,6 +573,7 @@ final class AppModel {
     func setAppActive(_ active: Bool) {
         guard appIsActive != active else { return }
         appIsActive = active
+        if active { Task { await refreshPortsIfVisible() } }
         if active, let focused = focusedSurface?.id {
             surfaceDidFocus(focused)
         } else {

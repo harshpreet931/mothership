@@ -17,6 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func makeAgentEngine() -> any AgentEngineProtocol {
         if isDemo { return DemoAgentEngine() }
+        // Debug: MOTHERSHIP_ENGINE=none measures the UI alone (no scanning, no sessions).
+        if environment["MOTHERSHIP_ENGINE"] == "none" { return NoopAgentEngine() }
         var configuration = AgentEngineConfiguration.standard
         // A held hook hides the agent's own prompt; for a session in VS Code or iTerm that
         // reads as a frozen agent, so only hold prompts for panes Mothership hosts.
