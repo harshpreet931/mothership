@@ -20,6 +20,8 @@ struct Options {
     var bench: Int?
     var home: URL?
     var settle: Double = 1.5
+    var titles = false
+    var coldStart: Double?
 }
 
 func parseOptions() -> Options {
@@ -32,6 +34,8 @@ func parseOptions() -> Options {
         case "--bench": options.bench = arguments.popFirst().flatMap(Int.init) ?? 20
         case "--home": options.home = arguments.popFirst().map { URL(fileURLWithPath: $0, isDirectory: true) }
         case "--settle": options.settle = arguments.popFirst().flatMap(Double.init) ?? options.settle
+        case "--titles": options.titles = true
+        case "--cold-start": options.coldStart = arguments.popFirst().flatMap(Double.init) ?? 6
         case "-h", "--help":
             print("usage: mship-probe [--json] [--watch] [--bench N] [--home DIR] [--settle SECONDS]")
             exit(0)
@@ -171,6 +175,45 @@ if let count = options.bench {
     exit(0)
 }
 
+if let window = options.coldStart {
+    // How fast does each session reach the state it settles in? Sample every 20 ms from start().
+    let clock = ContinuousClock()
+    let begin = clock.now
+    let sampler = Task {
+        var samples: [(Duration, [AgentSessionKey: String])] = []
+        while !Task.isCancelled {
+            let sessions = await engine.sessions()
+            samples.append((clock.now - begin, Dictionary(sessions.map { ($0.id, stateText($0.state)) }, uniquingKeysWith: { a, _ in a })))
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        return samples
+    }
+    await engine.start()
+    let ready = clock.now - begin
+    try? await Task.sleep(for: .seconds(window))
+    sampler.cancel()
+    let samples = await sampler.value
+    let finalSessions = await engine.sessions()
+    print("start() returned after \(milliseconds(ready)); sampled \(samples.count) snapshots over \(Int(window)) s")
+    var worst = Duration.zero
+    for session in finalSessions where session.state.isLive {
+        let final = stateText(session.state)
+        let firstSeen = samples.first { $0.1[session.id] != nil }?.0
+        // Earliest time after which the state matched the settled one in every later sample.
+        var settledAt: Duration?
+        for (time, states) in samples.reversed() {
+            if states[session.id] == final { settledAt = time } else { break }
+        }
+        let firstCorrect = samples.first { $0.1[session.id] == final }?.0
+        if let settledAt { worst = max(worst, settledAt) }
+        let label = session.cwd.isEmpty ? session.id.description : shortPath(session.cwd)
+        print("  \(pad(session.kind.rawValue, 7)) \(pad(session.pid.map(String.init) ?? "-", 6)) \(pad(label, 36)) \(pad(final, 16)) seen \(firstSeen.map(milliseconds) ?? "-"), first correct \(firstCorrect.map(milliseconds) ?? "-"), settled \(settledAt.map(milliseconds) ?? "changed late")")
+    }
+    print("worst settle time: \(milliseconds(worst))")
+    if let history = await engine.metrics.initialHistoryLoad { print("full history (titles, totals) loaded in background after \(milliseconds(history))") }
+    exit(0)
+}
+
 await engine.start()
 await engine.waitUntilReady()
 try? await Task.sleep(for: .seconds(options.settle))
@@ -179,6 +222,15 @@ let integrations = await engine.integrationStatuses()
 var estimates: [AgentSessionKey: Bool] = [:]
 for session in sessions { estimates[session.id] = await engine.costIsEstimated(session.id) }
 let metrics = await engine.metrics
+
+if options.titles {
+    // Titles and summaries only (no prompt bodies), for before/after comparisons.
+    for session in sessions {
+        print("\(pad(session.kind.rawValue, 8)) \(pad(session.pid.map(String.init) ?? "-", 6)) \(pad(shortPath(session.cwd), 36)) \(pad(stateText(session.state), 16)) title: \(session.title ?? "-")")
+        print(String(repeating: " ", count: 69) + "summary: \(session.summary ?? "-")")
+    }
+    exit(0)
+}
 
 if options.json {
     let encoder = JSONEncoder()
@@ -195,6 +247,7 @@ if options.json {
     printTable(sessions, estimates: estimates)
     printIntegrations(integrations)
     printMetrics(metrics)
+    print(await engine.transcriptPolling ? "Transcripts: FSEvents unavailable on this host — polling tracked files every \(configuration.transcriptPollInterval)s" : "Transcripts: FSEvents")
     for error in engine.manifestErrors { print("manifest: \(error)") }
 }
 

@@ -61,6 +61,9 @@ Desktop" becomes the host app, `source.subagent` → ignored file), `turn_contex
 `apply_patch` → "Edit <file>") and their `_output`s. Older `exec_approval_request` events map to
 needsInput(.permission).
 
+Titles: `session_index.jsonl` is read at start and tailed; each `{id, thread_name}` line is an
+attach-only fact (it never creates a session; it's applied when that thread shows up).
+
 ## Commands
 
 Resume `codex resume <id>`; launch `codex "<prompt>"`.

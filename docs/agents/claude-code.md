@@ -75,6 +75,20 @@ Context fill = latest `input + cache_read + cache_creation`. Subagent transcript
 `<session>/subagents/` and are not separate sessions. Big transcripts (150 MB seen) are read
 from the last 32 MB on first sight, so token totals for very long sessions are partial.
 
+## Titles and summaries
+
+Normal CLI sessions carry **no title record** (on this machine 116 of 120 CLI transcripts have
+none); `ai-title` / `custom-title` appear in Claude Desktop sessions and some agent sessions, and
+the status file `name` is a slug unless renamed. Precedence: user rename (`custom-title`,
+non-derived status `name`) > `ai-title`/`summary` (newest wins) > the earliest prompt with the
+user's own words (pasted `<pasted_content>` blocks only as a fallback), cleaned by
+`TitleCleaner` (markdown, quotes, `@file` refs, paths, URLs, placeholders; ≤ 48 chars at a word
+boundary) > the folder name. Huge transcripts are read as head (1 MB) + byte-scan of the skipped
+middle for title records and plain-text prompts (`"message":{"role":"user","content":"`) +
+the newest 32 MB, after a 256 KB peek that sets the current state within ~50 ms of `start()`.
+Summaries: the current tool phrased ("Running pnpm test", "Editing AppModel.swift") while
+working; the first sentence (≤ 80 chars, markdown stripped) of the last reply when idle.
+
 ## Commands
 
 Resume `claude --resume <id>`; launch `claude "<prompt>"` (positional prompt starts interactive).

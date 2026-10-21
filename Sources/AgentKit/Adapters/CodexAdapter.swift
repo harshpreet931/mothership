@@ -90,14 +90,28 @@ public struct CodexAdapter: AgentAdapter {
         "approval_request\"",
     ]
 
+    static func sessionIndex(_ home: URL) -> URL { home.appending(path: ".codex/session_index.jsonl") }
+
     public func transcriptSources(home: URL) -> [TranscriptSource] {
         let root = Self.sessionsRoot(home).path
+        let index = Self.sessionIndex(home)
+        let indexPath = index.path
         return [
             TranscriptSource(format: .jsonl, root: Self.sessionsRoot(home), lineMarkers: Self.lineMarkers) { path in
                 guard path.hasPrefix(root + "/"), path.hasSuffix(".jsonl") else { return false }
                 return (path as NSString).lastPathComponent.hasPrefix("rollout-")
-            }
+            },
+            // `{id, thread_name, updated_at}` per line: Codex's own session titles.
+            TranscriptSource(format: .jsonl, root: index.deletingLastPathComponent(), eagerFiles: [index]) { $0 == indexPath },
         ]
+    }
+
+    /// A `session_index.jsonl` line → an attach-only title for that thread.
+    func decodeIndexLine(_ json: JSONNode) -> [AgentSignal] {
+        guard let id = json["id"].text, let name = json["thread_name"].text else { return [] }
+        let hint = SessionHint(kind: kind, sessionID: id, attachOnly: true)
+        let metadata = SessionMetadata(title: name, titleSource: .agent)
+        return [AgentSignal(tier: .transcript, source: "index:codex", hint: hint, event: .metadata(metadata), timestamp: json["updated_at"].date ?? .distantPast)]
     }
 
     /// `rollout-2026-08-11T23-09-40-<uuid>.jsonl` → `<uuid>`.
@@ -148,6 +162,7 @@ public struct CodexAdapter: AgentAdapter {
 
     public func decodeTranscript(_ record: TranscriptRecord, state: inout TranscriptDecodeState) -> [AgentSignal] {
         guard case .line(let path, let data) = record, !state.ignored, let json = JSONNode.parse(data) else { return [] }
+        if path.hasSuffix("/session_index.jsonl") { return decodeIndexLine(json) }
         if state.sessionID == nil { state.sessionID = Self.sessionID(fromRolloutPath: path) }
         let payload = json["payload"]
         let timestamp = json["timestamp"].date ?? Date()

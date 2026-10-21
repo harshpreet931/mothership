@@ -113,6 +113,7 @@ public struct GeminiAdapter: AgentAdapter {
         }
         var usage = TokenUsage()
         var model: String?
+        var firstUser: String?
         var lastUser: String?
         var lastAssistant: String?
         var lastType: String?
@@ -122,6 +123,7 @@ public struct GeminiAdapter: AgentAdapter {
             switch type {
             case "user":
                 lastUser = message["content"].text ?? lastUser
+                if firstUser == nil { firstUser = message["content"].text }
             case "gemini", "model", "assistant":
                 lastAssistant = message["content"].text ?? lastAssistant
                 model = message["model"].text ?? model
@@ -141,7 +143,14 @@ public struct GeminiAdapter: AgentAdapter {
         state.model = model
         usage.contextWindow = Pricing.contextWindow(for: model)
         var signals = [
-            signal(.metadata(SessionMetadata(model: model, lastUserPrompt: lastUser, lastAssistantMessage: lastAssistant, startedAt: json["startTime"].date))),
+            signal(
+                .metadata(
+                    SessionMetadata(
+                        model: model, lastUserPrompt: lastUser, lastAssistantMessage: lastAssistant, startedAt: json["startTime"].date,
+                        firstUserPrompt: firstUser
+                    )
+                )
+            ),
             signal(.usage(usage, .replace)),
         ]
         switch lastType {

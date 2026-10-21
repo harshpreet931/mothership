@@ -81,6 +81,13 @@ public struct ClaudeAdapter: AgentAdapter {
     static func projectsRoot(_ home: URL) -> URL { home.appending(path: ".claude/projects", directoryHint: .isDirectory) }
     static func sessionsRoot(_ home: URL) -> URL { home.appending(path: ".claude/sessions", directoryHint: .isDirectory) }
 
+    /// Found by byte search in history skipped on first read: title records, and plain-text user
+    /// prompts (string content; tool results use an array), so the earliest prompt is known.
+    static let titleMarkers = [
+        "\"type\":\"ai-title\"", "\"type\":\"custom-title\"", "\"type\":\"summary\"",
+        "\"message\":{\"role\":\"user\",\"content\":\"",
+    ]
+
     static let lineMarkers = [
         "\"type\":\"assistant\"", "\"type\":\"user\"", "\"type\":\"system\"", "\"type\":\"last-prompt\"",
         "\"type\":\"ai-title\"", "\"type\":\"custom-title\"", "\"type\":\"summary\"",
@@ -90,7 +97,7 @@ public struct ClaudeAdapter: AgentAdapter {
         let projects = Self.projectsRoot(home).path
         let sessions = Self.sessionsRoot(home).path
         return [
-            TranscriptSource(format: .jsonl, root: Self.projectsRoot(home), lineMarkers: Self.lineMarkers) { path in
+            TranscriptSource(format: .jsonl, root: Self.projectsRoot(home), lineMarkers: Self.lineMarkers, titleMarkers: Self.titleMarkers) { path in
                 // <projects>/<escaped-cwd>/<session>.jsonl, not subagent files below it.
                 guard path.hasSuffix(".jsonl"), path.hasPrefix(projects + "/") else { return false }
                 return path.dropFirst(projects.count + 1).split(separator: "/").count == 2
@@ -139,7 +146,9 @@ public struct ClaudeAdapter: AgentAdapter {
         }
         if let cwd = json["cwd"].text { state.cwd = cwd }
         let hint = SessionHint(kind: kind, sessionID: state.sessionID, cwd: state.cwd, transcriptPath: path)
-        let timestamp = json["timestamp"].date ?? Date()
+        // Some records (ai-title, last-prompt) carry no timestamp: they belong where they sit in the file.
+        let timestamp = json["timestamp"].date ?? state.lastTimestamp ?? .distantPast
+        if json["timestamp"].exists { state.lastTimestamp = max(state.lastTimestamp ?? timestamp, timestamp) }
         func signal(_ event: SignalEvent) -> AgentSignal {
             AgentSignal(tier: .transcript, source: "transcript:claude", hint: hint, event: event, timestamp: timestamp)
         }
@@ -193,12 +202,14 @@ public struct ClaudeAdapter: AgentAdapter {
             }
             guard !sidechain else { return signals }
             var lastText: String?
+            var startedTool = false
             for item in message["content"].array ?? [] {
                 switch item["type"].string {
                 case "tool_use":
                     let tool = TextSummary.displayToolName(item["name"].text ?? "Tool")
                     let summary = TextSummary.toolSummary(tool: tool, input: item["input"], cwd: state.cwd)
                     signals.append(signal(.toolStarted(tool: tool, summary: nonEmpty(summary))))
+                    startedTool = true
                 case "text":
                     if let text = item["text"].text { lastText = text }
                 default:
@@ -207,8 +218,12 @@ public struct ClaudeAdapter: AgentAdapter {
             }
             if let lastText { metadata.lastAssistantMessage = lastText }
             if !metadata.isEmpty { signals.insert(signal(.metadata(metadata)), at: 0) }
-            if message["stop_reason"].string == "end_turn" {
+            switch message["stop_reason"].string {
+            case "end_turn", "stop_sequence", "refusal":
                 signals.append(signal(.turnCompleted(lastMessage: lastText)))
+            default:
+                // Still streaming, or text/thinking before the next tool call: the turn is live.
+                if !startedTool { signals.append(signal(.observedState(.working(tool: nil)))) }
             }
         case "system":
             if json["subtype"].string == "turn_duration" { signals.append(signal(.turnCompleted(lastMessage: nil))) }
@@ -217,7 +232,7 @@ public struct ClaudeAdapter: AgentAdapter {
         case "ai-title":
             if let title = json["aiTitle"].text { signals.append(signal(.metadata(SessionMetadata(title: title)))) }
         case "custom-title":
-            if let title = json["customTitle"].text { signals.append(signal(.metadata(SessionMetadata(title: title)))) }
+            if let title = json["customTitle"].text { signals.append(signal(.metadata(SessionMetadata(title: title, titleSource: .user)))) }
         case "summary":
             if let title = json["summary"].text { signals.append(signal(.metadata(SessionMetadata(title: title)))) }
         default:
@@ -230,6 +245,7 @@ public struct ClaudeAdapter: AgentAdapter {
     static func isSyntheticPrompt(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty || trimmed.hasPrefix("<command-") || trimmed.hasPrefix("<local-command")
+            || trimmed.hasPrefix("<task-notification") || trimmed.hasPrefix("<bash-")
             || trimmed.hasPrefix("<system-reminder>") || trimmed.hasPrefix("Caveat: ") || trimmed.hasPrefix("[Request interrupted")
     }
 
@@ -265,7 +281,10 @@ public struct ClaudeAdapter: AgentAdapter {
         var signals: [AgentSignal] = []
         var metadata = SessionMetadata(cwd: cwd, transcriptPath: transcript)
         // "derived" names are "<dir>-<hex>" slugs, not titles; AI/custom titles come from the transcript.
-        if let name = json["name"].text, json["nameSource"].string != "derived" { metadata.title = name }
+        if let name = json["name"].text, json["nameSource"].string != "derived" {
+            metadata.title = name
+            metadata.titleSource = .user
+        }
         metadata.startedAt = json["startedAt"].date
         signals.append(AgentSignal(tier: .transcript, source: "status:claude", hint: hint, event: .metadata(metadata), timestamp: timestamp))
         let state: AgentState? =

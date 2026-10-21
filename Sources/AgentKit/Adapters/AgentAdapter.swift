@@ -82,11 +82,20 @@ public struct TranscriptSource: Sendable {
     public var accepts: @Sendable (String) -> Bool
     /// JSONL prefilter: lines containing none of these substrings are skipped unparsed.
     public var lineMarkers: [String]?
+    /// Lines worth finding even in history skipped on first read of a huge file (titles, prompts).
+    public var titleMarkers: [String]?
+    /// Files to read when the engine starts (small indexes, e.g. Codex's thread names).
+    public var eagerFiles: [URL]
 
-    public init(format: Format, root: URL, lineMarkers: [String]? = nil, accepts: @escaping @Sendable (String) -> Bool) {
+    public init(
+        format: Format, root: URL, lineMarkers: [String]? = nil, titleMarkers: [String]? = nil, eagerFiles: [URL] = [],
+        accepts: @escaping @Sendable (String) -> Bool
+    ) {
         self.format = format
         self.root = root
         self.lineMarkers = lineMarkers
+        self.titleMarkers = titleMarkers
+        self.eagerFiles = eagerFiles
         self.accepts = accepts
     }
 }
@@ -108,6 +117,8 @@ public struct TranscriptDecodeState: Sendable, Equatable {
     public var lastMessageUsage: TokenUsage?
     /// Running usage total for sources that report per-message usage.
     public var usageTotal: TokenUsage = .zero
+    /// Newest record timestamp seen in this file (for records that have none).
+    public var lastTimestamp: Date?
     /// True while replaying history on first sight of a file.
     public var isInitialLoad: Bool
     /// Skip the rest of this file (e.g. a subagent rollout).

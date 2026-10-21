@@ -56,7 +56,7 @@ public struct AgentEngineConfiguration: Sendable {
         endedSessionRetention: TimeInterval = 30 * 60,
         transcriptOnlyIdleTimeout: TimeInterval = 30 * 60,
         integrationCheckInterval: TimeInterval = 30,
-        transcriptPollInterval: TimeInterval = 2,
+        transcriptPollInterval: TimeInterval = 1,
         processScanning: Bool = true,
         transcriptWatching: Bool = true,
         appProcessID: Int32 = getpid(),
@@ -114,6 +114,8 @@ public struct EngineMetrics: Sendable, Equatable {
     public var signalsApplied = 0
     public var transcriptBatches = 0
     public var updatesPublished = 0
+    /// How long the first scan's full transcript history took to load in the background.
+    public var initialHistoryLoad: Duration?
 
     public var scans: Int { systemScans + surfaceScans }
 

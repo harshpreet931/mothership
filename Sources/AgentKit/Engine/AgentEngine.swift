@@ -1,7 +1,11 @@
 import Foundation
+import OSLog
 import ShipModel
 import Synchronization
 import SystemProbe
+
+/// `log stream --predicate 'subsystem == "com.mothership.app" AND category == "AgentEngine"'`
+let engineLog = Logger(subsystem: ShipInfo.bundleIdentifier, category: "AgentEngine")
 
 /// The agent engine (ARCHITECTURE §5): merges hooks, terminal signals, transcripts and the
 /// process table into one state per session, holds permission hooks (§6), installs
@@ -581,8 +585,13 @@ public actor AgentEngine: AgentEngineProtocol {
         let pending = paths.filter { !trackedTranscripts.contains($0) }
         guard !pending.isEmpty else { return }
         if deferTranscripts {
+            // Newest 256 KB of each transcript now (current state, latest facts), full history later.
+            for path in pending { apply(Self.peekSignals(await ingestor.peek(path: path)), live: false) }
+            let clock = ContinuousClock()
+            let started = clock.now
             tasks.append(Task { [weak self] in
                 for path in pending { await self?.trackTranscript(path) }
+                await self?.noteHistoryLoaded(clock.now - started)
             })
         } else {
             for path in pending { await trackTranscript(path) }
@@ -632,13 +641,36 @@ public actor AgentEngine: AgentEngineProtocol {
     }
 
     func housekeeping(now: Date) {
-        for record in store.records.values where record.session.pid == nil && record.session.state != .ended
-            && now.timeIntervalSince(record.session.lastActivity) > configuration.transcriptOnlyIdleTimeout
-        {
+        for record in store.records.values where record.session.pid == nil && record.session.state != .ended {
+            let quiet = now.timeIntervalSince(record.session.lastActivity)
             let hint = SessionHint(kind: record.key.kind, sessionID: record.key.sessionID)
-            apply([AgentSignal(tier: .process, source: "inactive", hint: hint, event: .sessionEnded(reason: "inactive"), timestamp: now)], live: false)
+            if quiet > configuration.transcriptOnlyIdleTimeout {
+                apply([AgentSignal(tier: .process, source: "inactive", hint: hint, event: .sessionEnded(reason: "inactive"), timestamp: now)], live: false)
+            } else if quiet > 300, record.session.state.isBusy, (record.lastHookAt.map { now.timeIntervalSince($0) > 300 } ?? true) {
+                // Without a live process or recent hooks, an unfinished transcript isn't a running turn.
+                apply([AgentSignal(tier: .process, source: "no-process", hint: hint, event: .observedState(.idle), timestamp: now)], live: false)
+            }
         }
         if !store.prune(now: now, retention: configuration.endedSessionRetention).isEmpty { markDirty() }
+    }
+
+    func noteHistoryLoaded(_ duration: Duration) {
+        if metrics.initialHistoryLoad == nil { metrics.initialHistoryLoad = duration }
+        engineLog.notice("Initial transcript history loaded in \(duration.components.seconds, privacy: .public)s")
+    }
+
+    /// A peek sees only the newest prompts; they must not stand in for the session's first
+    /// prompt (the title) until the full history has been read.
+    static func peekSignals(_ signals: [AgentSignal]) -> [AgentSignal] {
+        signals.flatMap { signal -> [AgentSignal] in
+            guard case .promptSubmitted(let prompt) = signal.event else { return [signal] }
+            var state = signal
+            state.event = .observedState(.working(tool: nil))
+            guard let prompt else { return [state] }
+            var fact = signal
+            fact.event = .metadata(SessionMetadata(lastUserPrompt: prompt))
+            return [fact, state]
+        }
     }
 
     /// Forget tails of transcripts no live session uses, so memory stays flat over days.
@@ -654,6 +686,7 @@ public actor AgentEngine: AgentEngineProtocol {
         let roots = await ingestor.watchRoots()
         let watcher = FileSystemWatcher(paths: roots, latency: 0.3)
         if watcher.start() {
+            engineLog.notice("FSEvents watcher started for \(watcher.paths.count, privacy: .public) of \(roots.count, privacy: .public) transcript roots")
             fileWatcher = watcher
             let changes = watcher.changes
             tasks.append(Task { [weak self] in
@@ -661,6 +694,7 @@ public actor AgentEngine: AgentEngineProtocol {
             })
         } else {
             // FSEvents can be unavailable (sandboxed hosts, missing roots): stat what's tracked.
+            engineLog.error("FSEvents watcher could not start; polling transcripts every \(self.configuration.transcriptPollInterval, privacy: .public)s")
             transcriptPolling = true
             let interval = configuration.transcriptPollInterval
             tasks.append(Task { [weak self] in
@@ -671,6 +705,7 @@ public actor AgentEngine: AgentEngineProtocol {
             })
         }
         apply(await ingestor.pollOpenCode(), live: false)
+        for path in await ingestor.eagerFiles() { await trackTranscript(path) }
     }
 
     func pollTranscripts() async {

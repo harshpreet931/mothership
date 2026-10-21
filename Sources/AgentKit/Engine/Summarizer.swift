@@ -7,35 +7,54 @@ public protocol SessionSummarizer: Sendable {
     func summary(for record: SessionRecord) -> String?
 }
 
-/// Current tool + target while working, the pending question while blocked, otherwise the
-/// first prompt cut to a few words.
+/// While working: the current tool and target ("Editing AppModel.swift", "Running pnpm test").
+/// While blocked: what it's waiting for. Idle or done: the first sentence of the last reply.
 public struct HeuristicSummarizer: SessionSummarizer {
     public var maxLength: Int
 
-    public init(maxLength: Int = 60) { self.maxLength = maxLength }
+    public init(maxLength: Int = TitleCleaner.summaryLimit) { self.maxLength = maxLength }
 
     public func summary(for record: SessionRecord) -> String? {
         let session = record.session
-        let topic = (record.hasExplicitTitle ? session.title : nil) ?? record.firstPrompt.map { TextSummary.words($0, count: 6) } ?? session.title
         let text: String?
         switch session.state {
+        case .working(let tool?):
+            let target = tool == record.currentTool ? record.currentTarget : nil
+            text = ActivityPhrase.describe(tool: tool, target: target, limit: maxLength)
+        case .working(nil):
+            text = "Thinking…"
         case .needsInput(.permission):
             if let pending = session.pendingPermission {
                 text = pending.summary.isEmpty ? "Approve \(pending.toolName)?" : "Approve \(pending.toolName): \(pending.summary)"
+            } else if let tool = record.currentTool {
+                text = "Waiting for approval: " + ActivityPhrase.describe(tool: tool, target: record.currentTarget).lowercasedFirst
             } else {
-                text = record.currentActivity.map { "Waiting on \($0)" } ?? "Waiting for permission"
+                text = "Waiting for approval"
             }
         case .needsInput:
             text = "Waiting for your input"
-        case .working:
-            text = record.currentActivity ?? topic.map { "Working: \($0)" } ?? "Working"
         case .error(let message):
             text = "Error: \(message)"
         case .starting:
             text = "Starting"
         case .idle, .ended:
-            text = topic
+            text = session.lastAssistantMessage.flatMap { TitleCleaner.firstSentence($0, limit: maxLength) } ?? session.title
         }
-        return text.map { TextSummary.oneLine($0, limit: maxLength) }
+        return text.map { TextSummary.oneLine(Self.abbreviatingHome($0), limit: maxLength) }
+    }
+
+    static let home = FileManager.default.homeDirectoryForCurrentUser.path
+
+    /// "/Users/me/Downloads/x.mp4" → "~/Downloads/x.mp4".
+    static func abbreviatingHome(_ text: String) -> String {
+        guard home.count > 1 else { return text }
+        return text.replacingOccurrences(of: home + "/", with: "~/")
+    }
+}
+
+extension String {
+    var lowercasedFirst: String {
+        guard let first, first.isUppercase, dropFirst().first?.isLowercase ?? true else { return self }
+        return first.lowercased() + dropFirst()
     }
 }
