@@ -102,12 +102,12 @@ enum AppCommand: String, CaseIterable {
         case .fleet: ("f", [.command, .shift])
         case .toggleComposer: ("l", .command)
         case .toggleSidebar: ("b", .command)
-        case .commandPalette: ("p", .command)
+        case .commandPalette: ("k", .command)
         case .settings: (",", .command)
         case .increaseFontSize: ("+", .command)
         case .decreaseFontSize: ("-", .command)
         case .resetFontSize: ("0", [.command, .control])
-        case .clearScreen: ("k", .command)
+        case .clearScreen: ("k", [.command, .option])
         }
     }
 

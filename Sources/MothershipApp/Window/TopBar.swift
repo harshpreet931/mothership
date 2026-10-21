@@ -74,7 +74,7 @@ struct HomeMarkButton: View {
     }
 }
 
-/// "⌕ Search ⌘P" as a frosted capsule.
+/// "⌕ Search ⌘K" as a frosted capsule.
 struct SearchPill: View {
     /// Fixed, so the toast dock can sit right beside it.
     static let width: CGFloat = 120
@@ -88,7 +88,7 @@ struct SearchPill: View {
                     .font(.system(size: 12, weight: .medium))
                 Text("Search")
                     .font(Sky.Font.label)
-                Text("⌘P")
+                Text("⌘K")
                     .font(Sky.Font.meta)
                     .foregroundStyle(Sky.tertiary)
             }

@@ -37,7 +37,7 @@ struct PaletteItem: Identifiable {
     let icon: Icon
     var shortcut: String?
     let perform: @MainActor () -> Void
-    /// Secondary actions (⇥ on a selected row; ⌘K is Clear now).
+    /// Secondary actions (⇥ on a selected row).
     var actions: [Action] = []
 }
 
