@@ -4,7 +4,14 @@ import Foundation
 public enum TextSummary {
     /// First line of a prompt, collapsed and cut to `limit` characters.
     public static func title(fromPrompt prompt: String, limit: Int = 60) -> String {
-        oneLine(prompt, limit: limit)
+        oneLine(cleanPrompt(prompt), limit: limit)
+    }
+
+    /// Drops markup agents wrap around pasted content (`<pasted_content id="…">`, `<command-name>`).
+    public static func cleanPrompt(_ prompt: String) -> String {
+        let stripped = RegexCache.replace("</?[A-Za-z_][A-Za-z0-9_-]*(\\s[^<>]{0,120})?>", in: prompt, with: " ")
+        let trimmed = stripped.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? prompt : trimmed
     }
 
     /// Collapses whitespace and truncates with an ellipsis.
@@ -19,7 +26,7 @@ public enum TextSummary {
 
     /// First `count` words, for sidebar summaries.
     public static func words(_ text: String, count: Int) -> String {
-        let parts = text.split(whereSeparator: \.isWhitespace)
+        let parts = cleanPrompt(text).split(whereSeparator: \.isWhitespace)
         let head = parts.prefix(count).joined(separator: " ")
         return parts.count > count ? head + "…" : head
     }

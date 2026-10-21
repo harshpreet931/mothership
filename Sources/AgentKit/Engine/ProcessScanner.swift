@@ -66,6 +66,12 @@ actor ProcessScanner {
     private var cwds: [ProcessIdentity: String] = [:]
     private var git: [String: (info: GitInfo?, at: Date)] = [:]
     private var cpu: [ProcessIdentity: (nanos: UInt64, at: Date)] = [:]
+    /// `p_comm` → indexes of adapters interested in it (comm values repeat a lot: node, zsh…).
+    private var candidateMemo: [String: [Int]] = [:]
+    /// argv never changes for a process, so neither does "which adapter's root is this".
+    private var matchMemo: [ProcessIdentity: Int?] = [:]
+    /// Claude's per-pid status file is re-decoded only when its mtime changes.
+    private var statusFileStamps: [ProcessIdentity: Date] = [:]
     private(set) var lastTable: ProcessTable?
     private var argvReads = 0
 
@@ -90,21 +96,32 @@ actor ProcessScanner {
         case .descendants(let pid):
             pool = table.descendants(of: pid).filter { !$0.isZombie }
         }
-        var candidates = 0
+        var candidateCount = 0
         var matches: [Int32: (adapter: any AgentAdapter, process: ObservedProcess)] = [:]
         for snapshot in pool {
-            let interested = adapters.filter { $0.isCandidate(comm: snapshot.comm) }
-            guard !interested.isEmpty else { continue }
-            candidates += 1
-            guard let arguments = arguments(for: snapshot) else { continue }
-            let observed = ObservedProcess(snapshot: snapshot, arguments: arguments)
-            if let adapter = interested.first(where: { $0.matchesRoot(observed) }) {
-                matches[snapshot.pid] = (adapter, observed)
+            let identity = snapshot.identity
+            if let memo = matchMemo[identity] {
+                candidateCount += 1
+                guard let index = memo, let arguments = argumentsCache.arguments(for: snapshot, readIfMissing: false) else { continue }
+                matches[snapshot.pid] = (adapters[index], ObservedProcess(snapshot: snapshot, arguments: arguments))
+                continue
             }
+            let interested = candidateIndexes(for: snapshot.comm)
+            guard !interested.isEmpty else { continue }
+            candidateCount += 1
+            guard let arguments = arguments(for: snapshot) else {
+                matchMemo[identity] = .some(nil)
+                continue
+            }
+            let observed = ObservedProcess(snapshot: snapshot, arguments: arguments)
+            let index = interested.first { adapters[$0].matchesRoot(observed) }
+            matchMemo[identity] = .some(index)
+            if let index { matches[snapshot.pid] = (adapters[index], observed) }
         }
         // Keep only roots: an agent's MCP servers, plugins and wrapper children are excluded.
         var roots: [RootProcess] = []
-        for (pid, match) in matches where !table.ancestors(of: pid).contains(where: { matches[$0.pid] != nil }) {
+        for pid in Self.excludingDescendants(Set(matches.keys), in: table) {
+            guard let match = matches[pid] else { continue }
             roots.append(describe(match.process, adapter: match.adapter, table: table))
         }
         if scope == .system {
@@ -114,13 +131,41 @@ actor ProcessScanner {
             bindings = bindings.filter { live.contains($0.key) }
             cwds = cwds.filter { live.contains($0.key) }
             cpu = cpu.filter { live.contains($0.key) }
+            statusFileStamps = statusFileStamps.filter { live.contains($0.key) }
+            matchMemo = matchMemo.filter { live.contains($0.key) }
         }
         let alive = Set(table.processes.keys)
         return ScanResult(
             scope: scope, roots: roots.sorted { $0.pid < $1.pid }, alive: alive, scopePIDs: Set(pool.map(\.pid)),
-            processCount: table.processes.count, candidateCount: candidates, argvReads: argvReads,
+            processCount: table.processes.count, candidateCount: candidateCount, argvReads: argvReads,
             duration: clock.now - started, capturedAt: table.capturedAt
         )
+    }
+
+    /// Matched pids that have no matched ancestor: an agent's MCP servers, plugins, nested
+    /// `claude -p` runs and wrapper children are not separate sessions.
+    static func excludingDescendants(_ matched: Set<Int32>, in table: ProcessTable) -> [Int32] {
+        matched.filter { pid in !table.ancestors(of: pid).contains { matched.contains($0.pid) } }.sorted()
+    }
+
+    /// Pure root selection over a table, for tests and tools: match with `adapters`, then drop descendants.
+    static func roots(in table: ProcessTable, adapters: [any AgentAdapter], arguments: (ProcessSnapshot) -> ProcessArguments?) -> [(kind: AgentKind, pid: Int32)] {
+        var matched: [Int32: AgentKind] = [:]
+        for snapshot in table.processes.values {
+            let interested = adapters.filter { $0.isCandidate(comm: snapshot.comm) }
+            guard !interested.isEmpty, let argv = arguments(snapshot) else { continue }
+            let observed = ObservedProcess(snapshot: snapshot, arguments: argv)
+            if let adapter = interested.first(where: { $0.matchesRoot(observed) }) { matched[snapshot.pid] = adapter.kind }
+        }
+        return excludingDescendants(Set(matched.keys), in: table).compactMap { pid in matched[pid].map { ($0, pid) } }
+    }
+
+    private func candidateIndexes(for comm: String) -> [Int] {
+        if let indexes = candidateMemo[comm] { return indexes }
+        let indexes = adapters.indices.filter { adapters[$0].isCandidate(comm: comm) }
+        if candidateMemo.count > 4096 { candidateMemo.removeAll() }
+        candidateMemo[comm] = indexes
+        return indexes
     }
 
     private func arguments(for snapshot: ProcessSnapshot) -> ProcessArguments? {
@@ -156,8 +201,20 @@ actor ProcessScanner {
                 git[cwd] = (gitInfo, Date())
             }
         }
-        // Claude's status file changes with /clear and /resume; other bindings are stable.
-        var binding = adapter.kind == .claude ? nil : bindings[identity]
+        // Claude's status file changes with /clear and /resume (re-read when its mtime moves);
+        // other bindings are stable once found.
+        var binding = bindings[identity]
+        if adapter.kind == .claude {
+            let file = ClaudeAdapter.sessionsRoot(home).appending(path: "\(process.pid).json").path
+            let stamp = (try? FileManager.default.attributesOfItem(atPath: file)[.modificationDate] as? Date) ?? .distantPast
+            if statusFileStamps[identity] != stamp {
+                statusFileStamps[identity] = stamp
+                binding = nil
+            } else if binding != nil {
+                // Unchanged: keep the binding but don't replay its status signals.
+                binding?.signals = []
+            }
+        }
         if binding == nil {
             let lookup = openCode
             let context = BindingContext(home: home, table: table, openCodeSessions: { lookup.sessions(directory: $0) })

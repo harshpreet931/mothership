@@ -31,6 +31,8 @@ public struct AgentEngineConfiguration: Sendable {
     /// Sessions with no process (transcript-only) end after this much inactivity.
     public var transcriptOnlyIdleTimeout: TimeInterval
     public var integrationCheckInterval: TimeInterval
+    /// Transcript polling period, used only when FSEvents is unavailable.
+    public var transcriptPollInterval: TimeInterval
     public var processScanning: Bool
     public var transcriptWatching: Bool
     /// The app's pid; its descendants are scanned at `surfaceScanInterval`.
@@ -54,6 +56,7 @@ public struct AgentEngineConfiguration: Sendable {
         endedSessionRetention: TimeInterval = 30 * 60,
         transcriptOnlyIdleTimeout: TimeInterval = 30 * 60,
         integrationCheckInterval: TimeInterval = 30,
+        transcriptPollInterval: TimeInterval = 2,
         processScanning: Bool = true,
         transcriptWatching: Bool = true,
         appProcessID: Int32 = getpid(),
@@ -74,6 +77,7 @@ public struct AgentEngineConfiguration: Sendable {
         self.endedSessionRetention = endedSessionRetention
         self.transcriptOnlyIdleTimeout = transcriptOnlyIdleTimeout
         self.integrationCheckInterval = integrationCheckInterval
+        self.transcriptPollInterval = transcriptPollInterval
         self.processScanning = processScanning
         self.transcriptWatching = transcriptWatching
         self.appProcessID = appProcessID

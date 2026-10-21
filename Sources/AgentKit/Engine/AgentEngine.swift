@@ -1,5 +1,6 @@
 import Foundation
 import ShipModel
+import Synchronization
 import SystemProbe
 
 /// The agent engine (ARCHITECTURE §5): merges hooks, terminal signals, transcripts and the
@@ -17,7 +18,8 @@ public actor AgentEngine: AgentEngineProtocol {
     var held: [PermissionRequestID: HeldPermission] = [:]
     /// Replies decided before the hook's continuation was registered.
     var earlyReplies: [PermissionRequestID: HookReply] = [:]
-    var subscribers: [UUID: AsyncStream<AgentEngineUpdate>.Continuation] = [:]
+    /// Registered synchronously in `updates()` so nothing emitted after subscribing is missed.
+    nonisolated let subscribers = Mutex<[UUID: AsyncStream<AgentEngineUpdate>.Continuation]>([:])
     var integrations: [IntegrationStatus] = []
     var integrationFingerprint = ""
 
@@ -132,23 +134,20 @@ public actor AgentEngine: AgentEngineProtocol {
     public nonisolated func updates() -> AsyncStream<AgentEngineUpdate> {
         let (stream, continuation) = AsyncStream<AgentEngineUpdate>.makeStream(bufferingPolicy: .bufferingNewest(256))
         let id = UUID()
-        continuation.onTermination = { [weak self] _ in
-            Task { await self?.removeSubscriber(id) }
-        }
-        Task { await self.addSubscriber(id, continuation) }
+        continuation.onTermination = { [weak self] _ in self?.subscribers.withLock { _ = $0.removeValue(forKey: id) } }
+        subscribers.withLock { $0[id] = continuation }
+        Task { await self.sendInitialState(to: continuation) }
         return stream
     }
 
-    func addSubscriber(_ id: UUID, _ continuation: AsyncStream<AgentEngineUpdate>.Continuation) {
-        subscribers[id] = continuation
+    func sendInitialState(to continuation: AsyncStream<AgentEngineUpdate>.Continuation) {
         continuation.yield(.sessions(snapshot()))
         if !integrations.isEmpty { continuation.yield(.integrations(integrations)) }
     }
 
-    func removeSubscriber(_ id: UUID) { subscribers[id] = nil }
-
     func broadcast(_ update: AgentEngineUpdate) {
-        for continuation in subscribers.values { continuation.yield(update) }
+        let continuations = subscribers.withLock { Array($0.values) }
+        for continuation in continuations { continuation.yield(update) }
     }
 
     /// Coalesce `.sessions` updates to at most one per `updateInterval`.
@@ -164,7 +163,7 @@ public actor AgentEngine: AgentEngineProtocol {
     func flush() {
         flushTask = nil
         lastFlush = Date()
-        guard !subscribers.isEmpty else { return }
+        guard !subscribers.withLock({ $0.isEmpty }) else { return }
         metrics.updatesPublished += 1
         broadcast(.sessions(snapshot()))
     }
@@ -640,14 +639,36 @@ public actor AgentEngine: AgentEngineProtocol {
             tasks.append(Task { [weak self] in
                 for await batch in changes { await self?.ingest(batch) }
             })
+        } else {
+            // FSEvents can be unavailable (sandboxed hosts, missing roots): stat what's tracked.
+            transcriptPolling = true
+            let interval = configuration.transcriptPollInterval
+            tasks.append(Task { [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(interval))
+                    await self?.pollTranscripts()
+                }
+            })
         }
         apply(await ingestor.pollOpenCode(), live: false)
     }
+
+    func pollTranscripts() async {
+        guard running else { return }
+        let signals = await ingestor.pollForChanges()
+        if !signals.isEmpty { metrics.transcriptBatches += 1 }
+        apply(signals)
+        await trackTranscripts(in: signals)
+    }
+
+    /// True when FSEvents couldn't start and transcripts are polled instead.
+    public private(set) var transcriptPolling = false
 
     func ingest(_ batch: [FileChange]) async {
         metrics.transcriptBatches += 1
         let signals = await ingestor.handle(batch)
         apply(signals)
+        await trackTranscripts(in: signals)
     }
 
     func trackTranscripts(in signals: [AgentSignal]) async {

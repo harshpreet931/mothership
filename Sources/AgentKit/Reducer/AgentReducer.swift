@@ -80,7 +80,11 @@ public enum AgentReducer {
             // A held permission is resolved only by hooks or the user.
             if next.session.pendingPermission != nil { return next }
             if let leaseUntil = next.leaseUntil, now < leaseUntil {
-                if desired != current {
+                // Event-driven sources (transcripts, status files) won't repeat themselves, so a
+                // newer one is kept for when the lease ends. Heuristics re-sample; drop them.
+                if signal.isHeuristic {
+                    next.pendingSample = nil
+                } else if desired != current {
                     next.deferred = .init(state: desired, tier: signal.tier, timestamp: signal.timestamp)
                 }
                 return next

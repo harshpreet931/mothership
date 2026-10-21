@@ -26,6 +26,7 @@ actor TranscriptIngestor {
     private var documentStates: [String: TranscriptDecodeState] = [:]
     private var openCode: OpenCodeDatabase?
     private var openCodeCursor: Date
+    private var databaseStamp: Date?
     private(set) var linesParsed = 0
     private(set) var linesSkipped = 0
 
@@ -187,6 +188,44 @@ actor TranscriptIngestor {
     func close() {
         openCode?.close()
         openCode = nil
+    }
+
+    // MARK: Polling fallback (when FSEvents is unavailable)
+
+    /// Stat-based change detection for what's already tracked, plus small state directories
+    /// (Claude's per-pid status files) and the OpenCode database. A handful of `stat` calls.
+    func pollForChanges() -> [AgentSignal] {
+        let fileManager = FileManager.default
+        var changes: [FileChange] = []
+        for (path, tail) in tails {
+            var info = stat()
+            guard stat(path, &info) == 0 else { continue }
+            if UInt64(max(0, info.st_size)) != tail.tailer.offset || UInt64(info.st_ino) != tail.tailer.inode {
+                changes.append(FileChange(path: path, flags: 0))
+            }
+        }
+        for path in documents.keys { changes.append(FileChange(path: path, flags: 0)) }
+        for entry in sources where entry.source.format == .jsonDocument {
+            // Only flat state directories are listed (Claude's sessions dir); trees are not walked.
+            guard let names = try? fileManager.contentsOfDirectory(atPath: entry.source.root.path), names.count < 512 else { continue }
+            for name in names {
+                let path = entry.source.root.appending(path: name).path
+                if documents[path] == nil, entry.source.accepts(path) { changes.append(FileChange(path: path, flags: 0)) }
+            }
+        }
+        var signals = handle(changes.filter { !isDatabase($0.path) })
+        if let database = sources.first(where: { $0.source.format == .sqlite })?.source.root.path {
+            let stamp = [database, database + "-wal"].compactMap { (try? fileManager.attributesOfItem(atPath: $0)[.modificationDate]) as? Date }.max()
+            if let stamp, stamp != databaseStamp {
+                databaseStamp = stamp
+                signals += pollOpenCode()
+            }
+        }
+        return signals
+    }
+
+    private func isDatabase(_ path: String) -> Bool {
+        sources.contains { $0.source.format == .sqlite && $0.source.accepts(path) }
     }
 
     var trackedFileCount: Int { tails.count + documents.count }

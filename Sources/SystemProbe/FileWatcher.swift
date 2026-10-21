@@ -50,6 +50,13 @@ public final class FileSystemWatcher: Sendable {
 
     deinit { stop() }
 
+    /// Whether this process can register an FSEvents client at all (sandboxed hosts can't).
+    public static var isAvailable: Bool {
+        let probe = FileSystemWatcher(paths: [NSTemporaryDirectory()], latency: 1)
+        defer { probe.finish() }
+        return probe.start()
+    }
+
     /// Returns false when no stream could be created (e.g. every path is missing).
     @discardableResult
     public func start() -> Bool {

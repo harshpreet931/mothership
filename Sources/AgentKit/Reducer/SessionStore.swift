@@ -198,8 +198,12 @@ public struct SessionStore: Sendable {
             pending.session = target
             session.pendingPermission = pending
         }
-        let fromIsNewer = from.lastStateChange > into.lastStateChange || into.session.state == .starting
-        if fromIsNewer, from.session.state != .starting {
+        // Better tier wins; on a tie, newer evidence wins.
+        let fromTier = from.stateTier ?? .heuristic
+        let intoTier = into.stateTier ?? .heuristic
+        let fromWins = into.session.state == .starting || fromTier < intoTier
+            || (fromTier == intoTier && from.lastStateChange > into.lastStateChange)
+        if fromWins, from.session.state != .starting {
             session.state = from.session.state
             into.lastStateChange = from.lastStateChange
             into.stateTier = from.stateTier

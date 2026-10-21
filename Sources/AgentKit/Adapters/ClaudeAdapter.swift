@@ -37,8 +37,11 @@ public struct ClaudeAdapter: AgentAdapter {
     public func matchesRoot(_ process: ObservedProcess) -> Bool {
         let arguments = process.arguments
         let exe = arguments.executablePath
-        let isNative = arguments.executableName == "claude" || arguments.argv0Name == "claude"
-            || exe.contains("/claude/versions/")
+        // The native binary is multi-call: Claude runs its bundled ripgrep/ugrep as the same
+        // executable with a different argv[0]. Only argv[0] "claude" (or the version path) is the agent.
+        let argv0 = arguments.argv0Name
+        let isNative = (arguments.executableName == "claude" || exe.contains("/claude/versions/"))
+            && (argv0 == "claude" || ProcessMatching.isVersionLike(argv0) || arguments.arguments.isEmpty)
         if isNative {
             if let first = arguments.arguments.dropFirst().first, Self.excludedSubcommands.contains(first) { return false }
             return true
@@ -164,7 +167,7 @@ public struct ClaudeAdapter: AgentAdapter {
         case "assistant":
             let message = json["message"]
             let model = message["model"].text.flatMap { $0.hasPrefix("<") ? nil : $0 }
-            if let model { state.model = model }
+            if let model, !sidechain { state.model = model }
             var metadata = SessionMetadata(model: model)
             if let usage = Self.usage(message["usage"]) {
                 let delta: TokenUsage
@@ -254,7 +257,8 @@ public struct ClaudeAdapter: AgentAdapter {
         let timestamp = json["statusUpdatedAt"].date ?? updated ?? Date()
         var signals: [AgentSignal] = []
         var metadata = SessionMetadata(cwd: cwd, transcriptPath: transcript)
-        if let name = json["name"].text { metadata.title = name }
+        // "derived" names are "<dir>-<hex>" slugs, not titles; AI/custom titles come from the transcript.
+        if let name = json["name"].text, json["nameSource"].string != "derived" { metadata.title = name }
         metadata.startedAt = json["startedAt"].date
         signals.append(AgentSignal(tier: .transcript, source: "status:claude", hint: hint, event: .metadata(metadata), timestamp: timestamp))
         let state: AgentState? =
