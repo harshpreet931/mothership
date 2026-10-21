@@ -246,6 +246,12 @@ public struct SessionStore: Sendable {
         }
         into.lastHookAt = [into.lastHookAt, from.lastHookAt].compactMap { $0 }.max()
         into.hostAppHint = into.hostAppHint ?? from.hostAppHint
+        for opening in from.openingPrompts {
+            AgentReducer.noteOpening(opening.text, at: opening.at, in: &into.openingPrompts, limit: SessionRecord.openingPromptLimit)
+        }
+        for opening in from.openingReplies {
+            AgentReducer.noteOpening(opening.text, at: opening.at, in: &into.openingReplies, limit: SessionRecord.openingReplyLimit)
+        }
         into.session = session
         records[target] = into
         for (pid, key) in pidIndex where key == source { pidIndex[pid] = target }

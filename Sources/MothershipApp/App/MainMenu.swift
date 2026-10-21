@@ -69,6 +69,7 @@ enum MainMenu {
 
     private static func fileMenu(router: CommandRouter) -> NSMenu {
         let menu = NSMenu(title: "File")
+        menu.addItem(command(.newTask, router: router))
         menu.addItem(command(.newWorkspace, router: router))
         let recent = NSMenuItem(title: "New Workspace In", action: nil, keyEquivalent: "")
         let recentMenu = NSMenu(title: "New Workspace In")

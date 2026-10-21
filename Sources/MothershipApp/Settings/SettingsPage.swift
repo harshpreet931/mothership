@@ -26,10 +26,11 @@ struct SettingsPage: View {
                 SegmentedPill(
                     items: SettingsTab.allCases.map { ($0, $0.title) },
                     selection: Binding(get: { model.settingsTab }, set: { model.settingsTab = $0 }),
-                    height: 44, segmentWidth: (640 - 6) / 4
+                    height: 44, segmentWidth: (640 - 6) / CGFloat(SettingsTab.allCases.count)
                 )
                 Group {
                     switch model.settingsTab {
+                    case .general: GeneralSettings()
                     case .agents: AgentsSettings(model: model)
                     case .appearance: AppearanceSettings(model: model)
                     case .notifications: NotificationSettings()
@@ -359,6 +360,34 @@ struct SkySwatch: View {
         .buttonStyle(.plain)
         .accessibilityLabel(preset == .auto ? "Sky follows the sun" : "\(preset.title) sky")
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+// MARK: General
+
+struct GeneralSettings: View {
+    @AppStorage(PreferenceKey.keepSessionsAlive) private var keepAlive = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            GlassList {
+                GlassListRow(
+                    title: "Keep sessions running when Mothership quits",
+                    subtitle: "Shells and agents keep working in the background; reopening picks up right where they are.",
+                    showsDivider: false
+                ) {
+                    Image(systemName: "moon.zzz").font(.system(size: 15)).frame(width: 24).foregroundStyle(Sky.ink.opacity(0.75))
+                } trailing: {
+                    Toggle("", isOn: $keepAlive).toggleStyle(SkySwitchStyle())
+                }
+            }
+            Text(keepAlive
+                ? "Turn this off to end every shell and agent when you quit."
+                : "Quitting ends every shell and agent, like closing a terminal window.")
+                .font(.system(size: 12.5))
+                .foregroundStyle(Sky.secondary)
+                .padding(.horizontal, 22)
+        }
     }
 }
 

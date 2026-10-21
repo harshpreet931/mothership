@@ -6,13 +6,26 @@ import SwiftUI
 /// Full-window views (the top bar's segmented pill, ⌂ and ⌘,).
 enum AppScreen: String, Sendable {
     case workspaces, fleet, home, settings
+    /// Best-of-N: the runs of `compareTaskID` side by side.
+    case compare
+    /// One run's changes (`diffRunID`).
+    case diff
+
+    /// Pages that sit beside the sidebar, like the pane canvas.
+    var showsSidebar: Bool {
+        switch self {
+        case .workspaces, .fleet, .compare, .diff: true
+        case .home, .settings: false
+        }
+    }
 }
 
 enum SettingsTab: String, CaseIterable, Sendable {
-    case agents, appearance, notifications, keys
+    case general, agents, appearance, notifications, keys
 
     var title: String {
         switch self {
+        case .general: "General"
         case .agents: "Agents"
         case .appearance: "Appearance"
         case .notifications: "Notifications"
@@ -177,7 +190,8 @@ extension AppModel {
     var composerPlaceholder: String {
         if composerBroadcast { return "Message every agent" }
         if let target = composerTarget, let workspace = target.surface.flatMap({ workspace(containing: $0) }) {
-            return "Message \(target.kind.shortName) · \(workspace.name)"
+            let context = task(for: workspace.id)?.title ?? workspace.name
+            return "Message \(target.kind.shortName) · \(context)"
         }
         return "Start a task…"
     }
@@ -186,7 +200,10 @@ extension AppModel {
 
     /// Whether the composer shows at all: the pill (Settings → Composer), or open from ⌘L.
     var composerShown: Bool {
-        screen != .settings && (isComposerVisible || isComposerExpanded)
+        switch screen {
+        case .settings, .compare, .diff: false
+        case .workspaces, .fleet, .home: isComposerVisible || isComposerExpanded
+        }
     }
 
     /// Opens the composer and puts the caret in it (click, ⌘L, "Start a task").
@@ -217,7 +234,7 @@ extension AppModel {
     var portsVisible: Bool {
         switch screen {
         case .home: true
-        case .workspaces, .fleet: !isSidebarCollapsed
+        case .workspaces, .fleet, .compare, .diff: !isSidebarCollapsed
         case .settings: false
         }
     }

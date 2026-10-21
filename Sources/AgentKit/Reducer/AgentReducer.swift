@@ -43,6 +43,23 @@ public struct SessionRecord: Sendable, Equatable {
     public var modelAt: Date?
     public var contextAt: Date?
     public var usageAt: Date?
+    /// How the session opened (the earliest prompts and replies), for generated titles.
+    public var openingPrompts: [OpeningText] = []
+    public var openingReplies: [OpeningText] = []
+    /// A title from the on-device model, and the digest fingerprint it was made from.
+    public var generatedTitle: String?
+    public var generatedTitleFingerprint: String?
+    /// A one-line summary of `lastAssistantMessage`, and that reply's fingerprint.
+    public var generatedSummary: String?
+    public var generatedSummaryFingerprint: String?
+
+    public struct OpeningText: Sendable, Equatable {
+        public var text: String
+        public var at: Date
+    }
+
+    public static let openingPromptLimit = 3
+    public static let openingReplyLimit = 2
 
     public struct PendingSample: Sendable, Equatable {
         public var state: AgentState
@@ -292,6 +309,7 @@ public enum AgentReducer {
             record.currentTarget = summary.isEmpty ? nil : summary
         case .turnCompleted(let message?):
             let cleaned = message.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !cleaned.isEmpty { noteOpening(cleaned, at: time, in: &record.openingReplies, limit: SessionRecord.openingReplyLimit) }
             if !cleaned.isEmpty, isNewer(time, than: &record.assistantAt) { session.lastAssistantMessage = cleaned }
         case .subagentStarted:
             session.activeSubagents += 1
@@ -343,6 +361,7 @@ public enum AgentReducer {
         guard !cleaned.isEmpty else { return }
         if isNewer(time, than: &record.promptAt) { session.lastUserPrompt = cleaned }
         guard isFirstCandidate else { return }
+        noteOpening(cleaned, at: time, in: &record.openingPrompts, limit: SessionRecord.openingPromptLimit)
         if record.firstPromptAt.map({ time < $0 }) ?? true {
             record.firstPrompt = cleaned
             record.firstPromptAt = time
@@ -353,9 +372,28 @@ public enum AgentReducer {
         }
     }
 
-    /// Native title (agent/user) beats the cleaned first prompt; the folder name is the last resort.
+    /// Keeps the earliest `limit` texts (history can arrive newest-first: a peek, then the head).
+    static func noteOpening(_ text: String, at time: Date, in list: inout [SessionRecord.OpeningText], limit: Int) {
+        let clipped = String(text.prefix(600))
+        guard !list.contains(where: { $0.at == time && $0.text == clipped }) else { return }
+        if list.count >= limit, let last = list.last, time >= last.at { return }
+        list.append(.init(text: clipped, at: time))
+        list.sort { $0.at < $1.at }
+        if list.count > limit { list.removeLast(list.count - limit) }
+    }
+
+    /// The user's own name for the session, then the on-device model's, then the agent's,
+    /// then the cleaned first prompt; the folder name is the last resort.
     static func refreshTitle(_ session: inout AgentSession, record: inout SessionRecord) {
-        record.hasExplicitTitle = record.nativeTitle != nil
+        record.hasExplicitTitle = record.nativeTitle != nil || record.generatedTitle != nil
+        if let native = record.nativeTitle, record.nativeTitleRank >= 3 {
+            session.title = native
+            return
+        }
+        if let generated = record.generatedTitle {
+            session.title = generated
+            return
+        }
         if let native = record.nativeTitle {
             session.title = native
             return
@@ -385,10 +423,9 @@ public enum AgentReducer {
             // "Latest prompt" facts never become the title source: only real prompts do.
             notePrompt(prompt, at: time, session: &session, record: &record, isFirstCandidate: false)
         }
-        if let message = metadata.lastAssistantMessage?.trimmingCharacters(in: .whitespacesAndNewlines), !message.isEmpty,
-            isNewer(time, than: &record.assistantAt)
-        {
-            session.lastAssistantMessage = message
+        if let message = metadata.lastAssistantMessage?.trimmingCharacters(in: .whitespacesAndNewlines), !message.isEmpty {
+            noteOpening(message, at: time, in: &record.openingReplies, limit: SessionRecord.openingReplyLimit)
+            if isNewer(time, than: &record.assistantAt) { session.lastAssistantMessage = message }
         }
         if metadata.contextTokens != nil || metadata.contextWindow != nil, isNewer(time, than: &record.contextAt) {
             if let context = metadata.contextTokens { session.usage.contextTokens = context }

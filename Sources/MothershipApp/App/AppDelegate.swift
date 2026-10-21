@@ -1,5 +1,6 @@
 import AgentKit
 import AppKit
+import Intelligence
 import ShipModel
 import ShipProtocol
 import TerminalEngine
@@ -23,6 +24,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // A held hook hides the agent's own prompt; for a session in VS Code or iTerm that
         // reads as a frozen agent, so only hold prompts for panes Mothership hosts.
         configuration.holdPermissionsForExternalSessions = false
+        // On-device titles and reply summaries (Foundation Models); without Apple Intelligence
+        // the heuristics stay. MOTHERSHIP_INTELLIGENCE=off turns them off.
+        if environment["MOTHERSHIP_INTELLIGENCE"] != "off" {
+            let namer = SessionNamer()
+            configuration.textGenerator = SessionTextGenerator(
+                isAvailable: { SessionNamer.isAvailable },
+                title: { digest in try await namer.title(prompts: digest.prompts, replies: digest.replies, folder: digest.folder) },
+                summary: { reply, title in try await namer.summary(of: reply, title: title) }
+            )
+            configuration.generatedTextCache = ShipPaths.supportDirectory.appending(path: "generated-titles.json")
+        }
         return AgentEngine(configuration: configuration)
     }
 
@@ -76,6 +88,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         windowController.window?.makeKeyAndOrderFront(nil)
         model.start()
         services.start()
+        // Tasks (worktrees, diffs) and PR status. Demo mode and MOTHERSHIP_GH=none keep gh off.
+        if isDemo || environment["MOTHERSHIP_GH"] == "none" { GitServices.configure(github: nil) }
+        if !isDemo {
+            model.startTaskServices()
+            model.startPullRequestStatus()
+            // QA (scratch homes): a scripted task run, see DebugTaskScript.
+            if let script = environment["MOTHERSHIP_DEBUG_TASK"] { model.runDebugTaskScript(script) }
+        }
         NSApp.activate()
 
         if isDemo {
@@ -173,14 +193,17 @@ enum DemoSeed {
         // Focus the right pane so the left one (Claude, waiting on a permission) glows.
         main.focusedSurfaceID = model.split(direction: .right, focus: false)?.id
         let (web, _) = model.createWorkspace(cwd: existing(home + "/Desktop"), name: "web-dashboard", focus: false, insertAfterSelection: false)
-        _ = web
         let (infra, _) = model.createWorkspace(cwd: existing(home + "/Documents"), name: "infra", focus: false, insertAfterSelection: false)
         infra.colorHex = "7CC47F"
         infra.isPinned = false
         let (api, apiSurface) = model.createWorkspace(cwd: existing("/tmp"), name: "api-gateway", focus: false, insertAfterSelection: false)
-        _ = api
         // Show what a restored pane looks like.
         apiSurface.resumeOffer = AgentSessionKey(kind: .claude, sessionID: "demo-restored")
+        // Tasks (Best-of-3 in flight, Best-of-2 with one kept), their runs' workspaces, PRs.
+        DemoTasks.seed(
+            model, home: home, existing: existing,
+            named: ["mothership": main.id, "web-dashboard": web.id, "infra": infra.id, "api-gateway": api.id]
+        )
         model.createWorkspace(cwd: home, name: "scratch", focus: false, insertAfterSelection: false)
         model.selectWorkspace(main.id)
     }

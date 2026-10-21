@@ -18,6 +18,7 @@ final class RootView: NSView {
     private let topBarHost: NSHostingView<TopBar>
     private let toastHost: SizingHostingView<ToastLayer>
     private(set) var paletteHost: NSHostingView<CommandPaletteView>?
+    private(set) var newTaskHost: NSHostingView<NewTaskOverlay>?
     private var observation: ObservationLoop?
     private var keyMonitor: Any?
     let toastHover = ToastHover()
@@ -83,7 +84,7 @@ final class RootView: NSView {
         let gutter = Sky.gutter
         let top = Sky.topBarHeight
         let screen = model.screen
-        let sidebarAllowed = screen == .workspaces || screen == .fleet
+        let sidebarAllowed = screen.showsSidebar
         let docked = sidebarAllowed && !model.isSidebarCollapsed
         let sidebarVisible = docked || (sidebarAllowed && peeking)
         // The composer floats over the bottom gutter; it never takes height from panes
@@ -106,7 +107,7 @@ final class RootView: NSView {
         let screenFrame: NSRect = switch screen {
         case .home: NSRect(x: 0, y: top, width: size.width, height: max(0, size.height - top - (composerShown ? Sky.composerClearance + gutter : bottom)))
         case .settings: NSRect(x: 0, y: top, width: size.width, height: max(0, size.height - top))
-        case .fleet, .workspaces: content
+        case .fleet, .workspaces, .compare, .diff: content
         }
         return Frames(sidebar: sidebar, sidebarVisible: sidebarVisible, content: content, composer: composer, screen: screenFrame)
     }
@@ -127,6 +128,7 @@ final class RootView: NSView {
         topBarHost.frame = NSRect(x: 0, y: 0, width: bounds.width, height: Sky.topBarHeight)
         layoutToasts()
         paletteHost?.frame = bounds
+        newTaskHost?.frame = bounds
         let targets: [(NSView, NSRect)] = [
             (canvas, frames.content), (screenHost, frames.screen), (sidebarHost, frames.sidebar), (composerHost, frames.composer),
         ]
@@ -192,7 +194,33 @@ final class RootView: NSView {
             lastScreen = screen
         }
         syncPalette()
+        syncNewTask()
         animateLayout()
+    }
+
+    /// New Task floats over everything like the palette, with its own scrim.
+    private func syncNewTask() {
+        let presented = model.newTaskDraft != nil
+        if presented, newTaskHost == nil {
+            let host = Self.host(NewTaskOverlay(model: model))
+            host.frame = bounds
+            host.alphaValue = 0
+            addSubview(host)
+            newTaskHost = host
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.14
+                host.animator().alphaValue = 1
+            }
+            window?.makeFirstResponder(host)
+        } else if !presented, let host = newTaskHost {
+            newTaskHost = nil
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = 0.1
+                host.animator().alphaValue = 0
+            }, completionHandler: {
+                MainActor.assumeIsolated { host.removeFromSuperview() }
+            })
+        }
     }
 
     private func syncPalette() {
@@ -225,7 +253,7 @@ final class RootView: NSView {
 
     /// Hosting views stacked above the canvas, in z-order (for snapshots).
     var chromeLayers: [NSView] {
-        [screenHost, sidebarHost, composerHost, topBarHost, toastHost] + [paletteHost].compactMap { $0 }
+        [screenHost, sidebarHost, composerHost, topBarHost, toastHost] + [paletteHost, newTaskHost].compactMap { $0 }
     }
 
     // MARK: Sidebar peek (hover the left edge while collapsed)
@@ -236,7 +264,7 @@ final class RootView: NSView {
         if let sidebarArea { removeTrackingArea(sidebarArea) }
         edgeArea = nil
         sidebarArea = nil
-        guard model.isSidebarCollapsed, model.screen == .workspaces || model.screen == .fleet else { return }
+        guard model.isSidebarCollapsed, model.screen.showsSidebar else { return }
         let edge = NSTrackingArea(rect: NSRect(x: 0, y: Sky.topBarHeight, width: 6, height: bounds.height), options: [.mouseEnteredAndExited, .activeInKeyWindow], owner: self, userInfo: ["edge": true])
         addTrackingArea(edge)
         edgeArea = edge
@@ -263,15 +291,16 @@ final class RootView: NSView {
             let isOurWindow = event.window.map { ObjectIdentifier($0) }
             let consumed = MainActor.assumeIsolated { () -> Bool in
                 guard let self, let window = self.window, isOurWindow == ObjectIdentifier(window),
-                      !self.model.isPalettePresented else { return false }
+                      !self.model.isPalettePresented, self.model.newTaskDraft == nil else { return false }
                 if self.toastHover.hovering, !self.model.toasts.isEmpty {
                     self.model.dismissToast()
                     return true
                 }
-                // Esc backs out of Home, Fleet and Settings, unless a text field is editing.
+                // Esc backs out of Home, Fleet, Settings, Compare and Diff, unless a text
+                // field is editing.
                 let editing = window.firstResponder is NSTextView
                 guard !editing, self.model.screen != .workspaces else { return false }
-                self.model.show(.workspaces)
+                self.model.goBack()
                 return true
             }
             return consumed ? nil : event
@@ -293,6 +322,10 @@ struct ScreenLayer: View {
                 FleetView(model: model)
             case .settings:
                 SettingsPage(model: model)
+            case .compare:
+                CompareView(model: model)
+            case .diff:
+                DiffView(model: model)
             case .workspaces:
                 if model.workspaces.isEmpty { EmptyStateView(model: model) }
             }
@@ -312,7 +345,7 @@ struct EmptyStateView: View {
                 .font(Sky.Font.serifL)
                 .foregroundStyle(Sky.ink)
             HStack(spacing: 8) {
-                Button("Start a task") { model.openComposer() }
+                Button("Start a task") { model.presentNewTask() }
                     .buttonStyle(InkCapsuleStyle(height: 32))
                 Button("New workspace") { model.createWorkspace() }
                     .buttonStyle(SecondaryPillStyle(height: 32))

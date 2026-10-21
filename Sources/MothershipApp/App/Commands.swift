@@ -5,7 +5,7 @@ import ShipProtocol
 /// Every user-facing command. The main menu and the command palette are both built from
 /// this list so titles and shortcuts never drift apart.
 enum AppCommand: String, CaseIterable {
-    case newWorkspace, openFolder, renameWorkspace, closeWorkspace
+    case newTask, newWorkspace, openFolder, renameWorkspace, closeWorkspace
     case splitRight, splitDown, openBrowser, closePane, zoomPane, equalizeSplits
     case focusLeft, focusRight, focusUp, focusDown
     case nextWorkspace, previousWorkspace, jumpToAttention
@@ -17,6 +17,7 @@ enum AppCommand: String, CaseIterable {
 
     var title: String {
         switch self {
+        case .newTask: "New Task…"
         case .newWorkspace: "New Workspace"
         case .openFolder: "Open Folder…"
         case .renameWorkspace: "Rename Workspace…"
@@ -50,6 +51,7 @@ enum AppCommand: String, CaseIterable {
 
     var symbol: String {
         switch self {
+        case .newTask: "sparkles"
         case .newWorkspace: "plus.rectangle.on.rectangle"
         case .openFolder: "folder"
         case .renameWorkspace: "pencil"
@@ -84,6 +86,7 @@ enum AppCommand: String, CaseIterable {
     /// (key equivalent, modifiers) for the menu.
     var keyEquivalent: (String, NSEvent.ModifierFlags)? {
         switch self {
+        case .newTask: ("n", .command)
         case .newWorkspace: ("t", .command)
         case .openFolder: ("o", .command)
         case .renameWorkspace: nil
@@ -189,6 +192,7 @@ final class CommandRouter: NSObject, NSMenuItemValidation {
 
     func perform(_ command: AppCommand) {
         switch command {
+        case .newTask: model.presentNewTask()
         case .newWorkspace: model.createWorkspace()
         case .openFolder: model.openFolderAsWorkspace()
         case .renameWorkspace:

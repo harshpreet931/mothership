@@ -34,6 +34,50 @@ enum DebugSnapshot {
             case "fleet": model.show(.fleet)
             case "palette": model.isPalettePresented = true
             case "composer": model.openComposer()
+            case "newtask":
+                model.presentNewTask(
+                    prompt: "Return X-RateLimit-Limit, X-RateLimit-Remaining and Retry-After on every API response, with tests, and document them in docs/api.",
+                    repo: FileManager.default.homeDirectoryForCurrentUser.path + "/code/api-gateway", agents: [.claude, .codex]
+                )
+                model.newTaskDraft?.baseBranch = "main"
+            case "task":
+                // A run of the Best-of-3 selected, so the sidebar shows its group.
+                if let run = model.tasks.first?.runs.first { model.selectWorkspace(run.workspaceID) }
+            case "compare":
+                if let task = model.tasks.dropFirst(parts.count > 1 ? (Int(parts[1]) ?? 1) - 1 : 0).first { model.openCompare(task.id) }
+            case "diff":
+                if let run = model.tasks.first?.runs.first {
+                    model.openDiff(run.id)
+                    if parts.count > 1 {
+                        // "diff:find" shows the find bar with a query.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                            NotificationCenter.default.post(name: DiffView.debugFind, object: "Retry-After")
+                        }
+                    }
+                }
+            case "prcard":
+                guard let path = ProcessInfo.processInfo.environment["MOTHERSHIP_SNAPSHOT"] else { break }
+                let statuses = model.pullRequests.values.sorted { $0.number < $1.number }
+                let cards = VStack(alignment: .leading, spacing: 16) {
+                    HStack(spacing: 8) {
+                        ForEach(statuses, id: \.number) { status in PullRequestChip(status: status) {} }
+                    }
+                    ForEach(statuses.prefix(2), id: \.number) { status in
+                        PullRequestCard(status: status).solidPanel(radius: 14)
+                    }
+                }
+                .padding(24)
+                .background(Color(nsColor: .skyBubble))
+                let host = NSHostingView(rootView: cards)
+                host.appearance = root.window?.appearance
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    host.frame = NSRect(origin: .zero, size: host.fittingSize)
+                    host.layoutSubtreeIfNeeded()
+                    guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return }
+                    host.cacheDisplay(in: host.bounds, to: rep)
+                    let url = URL(fileURLWithPath: (path as NSString).deletingPathExtension + "-prcard.png")
+                    if let png = rep.representation(using: .png, properties: [:]) { try? png.write(to: url) }
+                }
             case "consent":
                 // The consent sheet as its own PNG beside the snapshot (sheets are separate
                 // windows). Use with MOTHERSHIP_DEMO so no real config is read into it.
