@@ -151,11 +151,11 @@ struct CircleButton: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: size * 0.42, weight: .medium))
-                .foregroundStyle(active ? Sky.onInk : Sky.ink.opacity(0.82))
+                .foregroundStyle(active ? Sky.onSelection : Sky.ink.opacity(0.82))
                 .frame(width: size, height: size)
                 .background {
                     if active {
-                        Circle().fill(Sky.ink)
+                        Circle().fill(Sky.selection).overlay(Circle().strokeBorder(Sky.selectionStroke, lineWidth: 1))
                     } else {
                         Circle().fill(Color.clear).glass(Circle())
                             .overlay(Circle().fill(Sky.ink.opacity(hovering ? 0.05 : 0)))
@@ -170,7 +170,7 @@ struct CircleButton: View {
     }
 }
 
-/// Glass capsule track (36 pt, padding 3) with a sliding ink selection.
+/// Glass capsule track (36 pt, padding 3) with a sliding selection (ink by day, frost at night).
 struct SegmentedPill<Value: Hashable>: View {
     let items: [(value: Value, title: String)]
     @Binding var selection: Value
@@ -187,13 +187,14 @@ struct SegmentedPill<Value: Hashable>: View {
                 } label: {
                     Text(item.title)
                         .font(Sky.Font.label)
-                        .foregroundStyle(selected ? Sky.onInk : Sky.secondary)
+                        .foregroundStyle(selected ? Sky.onSelection : Sky.secondary)
                         .padding(.horizontal, 16)
                         .frame(width: segmentWidth, height: height - 6)
                         .background {
                             if selected {
                                 Capsule(style: .continuous)
-                                    .fill(Sky.ink)
+                                    .fill(Sky.selection)
+                                    .overlay(Capsule(style: .continuous).strokeBorder(Sky.selectionStroke, lineWidth: 1))
                                     .matchedGeometryEffect(id: "selection", in: namespace)
                             }
                         }

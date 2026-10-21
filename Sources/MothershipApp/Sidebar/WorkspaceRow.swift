@@ -2,7 +2,7 @@ import ShipModel
 import SwiftUI
 
 /// One vertical tab (§6 Sidebar row). Selection is drawn by the sidebar (a sliding ink
-/// pill); the row only switches its text to `onInk`.
+/// pill); the row only switches its text to `onSelection`.
 struct WorkspaceRow: View {
     let workspace: Workspace
     let index: Int
@@ -43,7 +43,9 @@ struct WorkspaceRow: View {
         .background {
             let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
             if isSelected {
-                shape.fill(Sky.ink).matchedGeometryEffect(id: "selection", in: selectionNamespace)
+                shape.fill(Sky.selection)
+                    .overlay(shape.strokeBorder(Sky.selectionStroke, lineWidth: 1))
+                    .matchedGeometryEffect(id: "selection", in: selectionNamespace)
             } else if hovering {
                 shape.fill(Sky.ink.opacity(0.06))
             }
@@ -59,9 +61,9 @@ struct WorkspaceRow: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
-    private var primaryText: Color { isSelected ? Sky.onInk : Sky.ink }
-    private var secondaryText: Color { isSelected ? Sky.onInk.opacity(0.62) : Sky.secondary }
-    private var tertiaryText: Color { isSelected ? Sky.onInk.opacity(0.45) : Sky.tertiary }
+    private var primaryText: Color { isSelected ? Sky.onSelection : Sky.ink }
+    private var secondaryText: Color { isSelected ? Sky.onSelection.opacity(0.72) : Sky.secondary }
+    private var tertiaryText: Color { isSelected ? Sky.onSelection.opacity(0.55) : Sky.tertiary }
 
     private func titleLine(_ sessions: [AgentSession]) -> some View {
         HStack(spacing: 6) {
@@ -133,7 +135,7 @@ struct WorkspaceRow: View {
                                 .foregroundStyle(secondaryText)
                                 .padding(.horizontal, 5)
                                 .frame(height: 16)
-                                .background(Capsule().fill(isSelected ? Sky.onInk.opacity(0.14) : Sky.recess))
+                                .background(Capsule().fill(isSelected ? Sky.onSelection.opacity(0.14) : Sky.recess))
                                 .contentShape(Capsule())
                         }
                         .buttonStyle(.plain)
