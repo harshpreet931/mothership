@@ -26,11 +26,17 @@ let package = Package(
         .target(name: "BrowserKit", dependencies: ["ShipModel"]),
         // UNUserNotificationCenter, actionable notifications, Dock badge.
         .target(name: "AttentionKit", dependencies: ["ShipModel"]),
+        // Git: repo info, worktrees, diffs, GitHub PR status via `gh`.
+        .target(name: "GitKit", dependencies: ["ShipModel"]),
+        // Session host protocol + client: PTYs owned by `mshipd` so shells outlive the app.
+        .target(name: "SessionHost", dependencies: ["ShipModel"]),
+        // On-device intelligence (Apple Foundation Models): titles and summaries.
+        .target(name: "Intelligence", dependencies: ["ShipModel"]),
         // libghostty surface wrapper behind a small protocol.
         .target(
             name: "TerminalEngine",
             dependencies: [
-                "ShipModel",
+                "ShipModel", "SessionHost",
                 .product(name: "GhosttyTerminal", package: "libghostty-spm"),
                 .product(name: "GhosttyTheme", package: "libghostty-spm"),
             ]
@@ -42,10 +48,13 @@ let package = Package(
             dependencies: [
                 "ShipModel", "ShipProtocol", "SystemProbe", "AgentKit",
                 "ControlPlane", "BrowserKit", "AttentionKit", "TerminalEngine",
+                "GitKit", "SessionHost", "Intelligence",
             ]
         ),
         // The CLI used by agent hooks, scripts, and `mship mcp`.
         .executableTarget(name: "mship", dependencies: ["ShipModel", "ShipProtocol"]),
+        // Session daemon: owns PTYs and output buffers; the app attaches and renders.
+        .executableTarget(name: "mshipd", dependencies: ["ShipModel", "SessionHost"]),
         // Dev tool: dump what the agent engine sees on this machine.
         .executableTarget(name: "mship-probe", dependencies: ["ShipModel", "SystemProbe", "AgentKit"]),
 
@@ -59,6 +68,8 @@ let package = Package(
         .testTarget(name: "ControlPlaneTests", dependencies: ["ControlPlane", "ShipProtocol", "ShipModel"]),
         .testTarget(name: "BrowserKitTests", dependencies: ["BrowserKit", "AttentionKit", "ShipModel"]),
         .testTarget(name: "TerminalEngineTests", dependencies: ["TerminalEngine"]),
+        .testTarget(name: "GitKitTests", dependencies: ["GitKit"]),
+        .testTarget(name: "SessionHostTests", dependencies: ["SessionHost"]),
     ],
     swiftLanguageModes: [.v6]
 )

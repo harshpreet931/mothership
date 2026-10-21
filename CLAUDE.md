@@ -10,7 +10,8 @@ Design: `docs/ARCHITECTURE.md`. MIT. macOS 26+, Swift 6.3, Swift 6 language mode
 swift build                              # everything
 swift build --target AgentKit            # one module (fast)
 swift test --filter AgentKitTests        # one test target (Swift Testing: `import Testing`)
-scripts/bundle.sh                        # → build/Mothership.app (once it exists)
+scripts/bundle.sh                        # → build/Mothership.app
+scripts/qa.sh                            # end-to-end QA against a scratch-home app instance
 ```
 
 ## Module map (arrows point down only)
@@ -25,9 +26,13 @@ scripts/bundle.sh                        # → build/Mothership.app (once it exi
 | `BrowserKit` | WKWebView browser surface + automation. |
 | `AttentionKit` | Notifications with actions, Dock badge. |
 | `TerminalEngine` | libghostty-spm (`GhosttyTerminal`) wrapper. |
+| `GitKit` | Repo info, worktrees, diffs, GitHub PR status (`gh`). |
+| `SessionHost` | Session-daemon protocol + client: PTYs owned by `mshipd` so shells outlive the app. |
+| `Intelligence` | On-device Foundation Models: session titles and summaries. |
 | `MothershipApp` | The AppKit/SwiftUI app. Composition root. |
 | `mship` | CLI: `mship hook`, `notify`, `open`, `split`, `status`, `mcp`. |
 | `mship-probe` | Dev tool printing what the agent engine sees. |
+| `mshipd` | Session daemon: owns PTYs and output buffers; the app attaches and renders. |
 
 ## Rules
 
