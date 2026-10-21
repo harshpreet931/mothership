@@ -266,6 +266,58 @@ struct EngineTests {
         await recorder.stop()
     }
 
+    @Test func unchangedStateIsNotRepublished() async throws {
+        let home = try TempHome()
+        defer { home.remove() }
+        let engine = makeEngine(home: home)
+        let recorder = UpdateRecorder()
+        await recorder.start(engine.updates())
+        _ = await engine.handleHook(hook("UserPromptSubmit", #"{"session_id":"s-9","prompt":"Tidy the README"}"#, surface: surface))
+        #expect(await waitUntil { await engine.sessions().first?.state.isBusy == true })
+        try await Task.sleep(for: .milliseconds(150))
+        let settled = await recorder.sessionSnapshots
+        // A scan re-seeing the same process, and flushes with nothing new, publish nothing.
+        for _ in 0..<5 {
+            await engine.applyRootForTesting(kind: .claude, pid: 4242, surface: surface, cwd: "/repo")
+            await engine.markDirty()
+            try await Task.sleep(for: .milliseconds(80))
+        }
+        #expect(await recorder.sessionSnapshots == settled)
+        // A real change still goes out.
+        _ = await engine.handleHook(hook("Stop", #"{"session_id":"s-9","last_assistant_message":"README tidied."}"#, surface: surface))
+        #expect(await waitUntil { await recorder.sessionSnapshots > settled })
+        await recorder.stop()
+    }
+
+    @Test func hiddenAppBacksOff() async throws {
+        let home = try TempHome()
+        defer { home.remove() }
+        let engine = makeEngine(home: home)
+        await engine.surfaceOpened(surface, workspace: workspace, cwd: "/repo")
+        #expect(await engine.scanIntervals.next == 1)
+        await engine.setAppActive(false)
+        let hidden = await engine.scanIntervals
+        #expect(hidden.next == 8)
+        #expect(hidden.system == 8)
+        await engine.setAppActive(true)
+        #expect(await engine.scanIntervals.next == 1)
+    }
+
+    @Test func surfaceScanRunsOnlyWhenTheAppTreeChanges() async throws {
+        let scanner = ProcessScanner(adapters: [], home: FileManager.default.temporaryDirectory)
+        _ = await scanner.descendantsChanged(of: getpid())
+        #expect(await scanner.descendantsChanged(of: getpid()) == false)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        process.arguments = ["5"]
+        try process.run()
+        #expect(await scanner.descendantsChanged(of: getpid()))
+        #expect(await scanner.descendantsChanged(of: getpid()) == false)
+        process.terminate()
+        process.waitUntilExit()
+        #expect(await scanner.descendantsChanged(of: getpid()))
+    }
+
     @Test func terminalSignalsMapToSessionOnSurface() async throws {
         let home = try TempHome()
         defer { home.remove() }

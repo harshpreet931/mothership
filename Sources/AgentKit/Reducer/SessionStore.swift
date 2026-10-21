@@ -24,6 +24,8 @@ public struct SessionStore: Sendable {
         public var renamedFrom: AgentSessionKey?
         /// Sessions ended because their process moved on to this one.
         public var replaced: [AgentSessionKey]
+        /// Anything about the session changed (state or facts); false for pure repeats.
+        public var recordChanged: Bool = true
 
         public var stateChanged: Bool { previous != current }
     }
@@ -47,10 +49,12 @@ public struct SessionStore: Sendable {
         if next.session.state == .ended {
             for (pid, key) in pidIndex where key == resolution.key { pidIndex[pid] = nil }
         }
-        return Change(
+        var change = Change(
             key: resolution.key, previous: resolution.created ? nil : previous, current: next.session.state,
             renamedFrom: resolution.renamedFrom, replaced: resolution.replaced
         )
+        change.recordChanged = resolution.created || resolution.renamedFrom != nil || !resolution.replaced.isEmpty || next != record
+        return change
     }
 
     /// Lease expiry: applies deferred lower-tier states.

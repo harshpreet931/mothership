@@ -95,6 +95,27 @@ struct IngestionTests {
         #expect(events.contains(.observedState(.working(tool: nil))))
     }
 
+    func statusFile(pid: Int, session: String) -> String {
+        #"{"pid":\#(pid),"sessionId":"\#(session)","cwd":"/work/app","status":"idle","updatedAt":1800000100000,"statusUpdatedAt":1800000100000}"#
+    }
+
+    @Test func safetyPollDoesNotReReadIdleStatusFiles() async throws {
+        let home = try TempHome()
+        defer { home.remove() }
+        try home.write(".claude/sessions/321.json", statusFile(pid: 321, session: "sess-321"))
+        let ingestor = TranscriptIngestor(adapters: [ClaudeAdapter()], home: home.root)
+        #expect(await ingestor.pollForChanges().contains { $0.hint.sessionID == "sess-321" })
+        #expect(await ingestor.pollForChanges().isEmpty)
+        // Old enough to evict, but the next listing would only bring it back: it stays.
+        await ingestor.evict(olderThan: 0)
+        #expect(await ingestor.pollForChanges().isEmpty)
+        // New files in the directory are still found, and changed ones re-read.
+        try home.write(".claude/sessions/654.json", statusFile(pid: 654, session: "sess-654"))
+        #expect(await ingestor.pollForChanges().contains { $0.hint.sessionID == "sess-654" })
+        try home.write(".claude/sessions/321.json", statusFile(pid: 321, session: "sess-321b"))
+        #expect(await ingestor.pollForChanges().contains { $0.hint.sessionID == "sess-321b" })
+    }
+
     @Test func codexThreadNamesAttachWhenSessionsAppear() async throws {
         let home = try TempHome()
         defer { home.remove() }

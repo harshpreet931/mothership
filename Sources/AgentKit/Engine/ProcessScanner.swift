@@ -83,15 +83,25 @@ actor ProcessScanner {
     /// `p_comm` → indexes of adapters interested in it (comm values repeat a lot: node, zsh…).
     private var candidateMemo: [String: [Int]] = [:]
     /// argv never changes for a process, so neither does "which adapter's root is this".
-    private var matchMemo: [ProcessIdentity: Int?] = [:]
+    private var matchMemo: [MemoKey: Int?] = [:]
+    /// The app's descendants at the last surface scan (pid set from `proc_listchildpids`).
+    private var lastDescendants: [Int32: String]?
+
+    struct MemoKey: Hashable {
+        var identity: ProcessIdentity
+        var comm: String
+    }
     /// Claude's per-pid status file is re-decoded only when its mtime changes.
     private var statusFileStamps: [ProcessIdentity: Date] = [:]
     private(set) var lastTable: ProcessTable?
     private var argvReads = 0
 
+    private let claudeSessionsDirectory: String
+
     init(adapters: [any AgentAdapter], home: URL) {
         self.adapters = adapters
         self.home = home
+        self.claudeSessionsDirectory = ClaudeAdapter.sessionsRoot(home).path
         self.openCode = OpenCodeLookup(path: OpenCodeAdapter.databasePath(home).path)
     }
 
@@ -113,7 +123,7 @@ actor ProcessScanner {
         var candidateCount = 0
         var matches: [Int32: (adapter: any AgentAdapter, process: ObservedProcess)] = [:]
         for snapshot in pool {
-            let identity = snapshot.identity
+            let identity = MemoKey(identity: snapshot.identity, comm: snapshot.comm)
             if let memo = matchMemo[identity] {
                 candidateCount += 1
                 guard let index = memo, let arguments = argumentsCache.arguments(for: snapshot, readIfMissing: false) else { continue }
@@ -146,7 +156,7 @@ actor ProcessScanner {
             cwds = cwds.filter { live.contains($0.key) }
             cpu = cpu.filter { live.contains($0.key) }
             statusFileStamps = statusFileStamps.filter { live.contains($0.key) }
-            matchMemo = matchMemo.filter { live.contains($0.key) }
+            matchMemo = matchMemo.filter { live.contains($0.key.identity) }
         }
         let alive = Set(table.processes.keys)
         return ScanResult(
@@ -219,8 +229,7 @@ actor ProcessScanner {
         // other bindings are stable once found.
         var binding = bindings[identity]
         if adapter.kind == .claude {
-            let file = ClaudeAdapter.sessionsRoot(home).appending(path: "\(process.pid).json").path
-            let stamp = (try? FileManager.default.attributesOfItem(atPath: file)[.modificationDate] as? Date) ?? .distantPast
+            let stamp = FileStamp.of("\(claudeSessionsDirectory)/\(process.pid).json")?.modified ?? .distantPast
             if statusFileStamps[identity] != stamp {
                 statusFileStamps[identity] = stamp
                 binding = nil
@@ -268,6 +277,16 @@ actor ProcessScanner {
     }
 
     func openCodeSessions(directory: String) -> [OpenCodeSessionRow] { openCode.sessions(directory: directory) }
+
+    /// Whether the app's process tree changed since the last check: a few libproc calls, so
+    /// the per-second surface scan only reads the process table when something forked, exec'd
+    /// (same pid, new name) or exited.
+    func descendantsChanged(of pid: Int32) -> Bool {
+        var current: [Int32: String] = [:]
+        for child in ProcessInspector.descendantPIDs(of: pid) { current[child] = ProcessInspector.name(pid: child) ?? "" }
+        defer { lastDescendants = current }
+        return current != lastDescendants
+    }
 
     var cachedArgumentCount: Int { argumentsCache.count }
 }

@@ -26,6 +26,8 @@ actor TranscriptIngestor {
     let headBytes: UInt64
     private var tails: [String: Tail] = [:]
     private var documents: [String: (modified: Date, size: Int)] = [:]
+    /// Flat state directories (Claude's sessions dir) are re-listed only when their mtime moves.
+    private var listedDirectories: [String: FileStamp] = [:]
     private var documentStates: [String: TranscriptDecodeState] = [:]
     private var openCode: OpenCodeDatabase?
     private var openCodeCursor: Date
@@ -278,14 +280,12 @@ actor TranscriptIngestor {
     }
 
     private func readDocument(_ path: String, entry: Source) -> [AgentSignal] {
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: path),
-            let modified = attributes[.modificationDate] as? Date,
-            let size = (attributes[.size] as? NSNumber)?.intValue, size < 16 << 20
-        else {
+        guard let stamp = FileStamp.of(path), stamp.size < 16 << 20 else {
             documents[path] = nil
             documentStates[path] = nil
             return []
         }
+        let (modified, size) = (stamp.modified, stamp.size)
         if let previous = documents[path], previous.modified == modified, previous.size == size { return [] }
         documents[path] = (modified, size)
         guard let data = FileManager.default.contents(atPath: path) else { return [] }
@@ -334,7 +334,12 @@ actor TranscriptIngestor {
             tails[path] = nil
             evicted.insert(path)
         }
-        for (path, document) in documents where now.timeIntervalSince(document.modified) >= age && !keeping.contains(path) {
+        // Files in a listed state directory stay: the next poll's listing would only re-read them.
+        let listed = Set(sources.filter { $0.source.format == .jsonDocument }.map(\.source.root.path))
+        for (path, document) in documents
+        where now.timeIntervalSince(document.modified) >= age && !keeping.contains(path)
+            && !listed.contains((path as NSString).deletingLastPathComponent)
+        {
             documents[path] = nil
             documentStates[path] = nil
             evicted.insert(path)
@@ -364,15 +369,18 @@ actor TranscriptIngestor {
         for path in documents.keys { changes.append(FileChange(path: path, flags: 0)) }
         for entry in sources where entry.source.format == .jsonDocument {
             // Only flat state directories are listed (Claude's sessions dir); trees are not walked.
-            guard let names = try? fileManager.contentsOfDirectory(atPath: entry.source.root.path), names.count < 512 else { continue }
+            let root = entry.source.root.path
+            guard let stamp = FileStamp.of(root), listedDirectories[root] != stamp else { continue }
+            guard let names = try? fileManager.contentsOfDirectory(atPath: root), names.count < 512 else { continue }
+            listedDirectories[root] = stamp
             for name in names {
-                let path = entry.source.root.appending(path: name).path
+                let path = root + "/" + name
                 if documents[path] == nil, entry.source.accepts(path) { changes.append(FileChange(path: path, flags: 0)) }
             }
         }
         var signals = handle(changes.filter { !isDatabase($0.path) })
         if let database = sources.first(where: { $0.source.format == .sqlite })?.source.root.path {
-            let stamp = [database, database + "-wal"].compactMap { (try? fileManager.attributesOfItem(atPath: $0)[.modificationDate]) as? Date }.max()
+            let stamp = [database, database + "-wal"].compactMap { FileStamp.of($0)?.modified }.max()
             if let stamp, stamp != databaseStamp {
                 databaseStamp = stamp
                 signals += pollOpenCode()

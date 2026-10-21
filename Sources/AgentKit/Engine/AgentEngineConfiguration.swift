@@ -128,6 +128,8 @@ public struct EngineMetrics: Sendable, Equatable {
     public var initialHistoryLoad: Duration?
     public var watchBatches = 0
     public var watchedPaths = 0
+    /// Per-second pane scans skipped because the app's process tree hadn't changed.
+    public var skippedSurfaceScans = 0
 
     public var scans: Int { systemScans + surfaceScans }
 

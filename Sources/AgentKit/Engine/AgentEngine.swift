@@ -54,6 +54,29 @@ public actor AgentEngine: AgentEngineProtocol {
     var readyWaiters: [CheckedContinuation<Void, Never>] = []
     /// True while `start()` runs: whatever it reads is history, not news.
     var startingUp = false
+    /// Frontmost app: scan and poll at full speed; hidden: back off.
+    var appActive = true
+    /// The last `.sessions` snapshot sent, so identical ones aren't re-sent.
+    var lastPublished: [AgentSession]?
+    /// Summaries are regex work over long replies; recompute only when their inputs change.
+    var summaryCache: [AgentSessionKey: (inputs: SummaryInputs, summary: String?)] = [:]
+    var lastDesiredWatches: Set<String> = []
+    var lastWatchedCount = -1
+    var nextWatchAudit = Date.distantPast
+    /// Bumped by every change that gets published (`markDirty`): derived data (watch targets,
+    /// which pane agents need CPU samples) is recomputed only when it moves.
+    var recordsGeneration = 0
+    var watchGeneration = -1
+    var paneCPUSamples: (generation: Int, needed: Bool)?
+
+    struct SummaryInputs: Equatable {
+        var state: AgentState
+        var tool: String?
+        var target: String?
+        var title: String?
+        var lastMessage: String?
+        var permission: String?
+    }
     var attentionGate = AttentionGate()
     public private(set) var metrics = EngineMetrics()
 
@@ -172,6 +195,7 @@ public actor AgentEngine: AgentEngineProtocol {
 
     /// Coalesce `.sessions` updates to at most one per `updateInterval`.
     func markDirty() {
+        recordsGeneration &+= 1
         guard flushTask == nil else { return }
         let delay = lastFlush.addingTimeInterval(configuration.updateInterval).timeIntervalSinceNow
         flushTask = Task { [weak self] in
@@ -184,8 +208,12 @@ public actor AgentEngine: AgentEngineProtocol {
         flushTask = nil
         lastFlush = Date()
         guard !subscribers.withLock({ $0.isEmpty }) else { return }
+        let sessions = snapshot()
+        // Diff before emitting: an identical snapshot changes nothing downstream.
+        guard sessions != lastPublished else { return }
+        lastPublished = sessions
         metrics.updatesPublished += 1
-        broadcast(.sessions(snapshot()))
+        broadcast(.sessions(sessions))
     }
 
     public func sessions() async -> [AgentSession] { snapshot() }
@@ -199,11 +227,23 @@ public actor AgentEngine: AgentEngineProtocol {
 
     func present(_ record: SessionRecord) -> AgentSession {
         var session = record.session
-        session.summary = configuration.summarizer.summary(for: record)
+        session.summary = summary(for: record)
         if record.costIsEstimate { session.usage.costUSD = Pricing.estimateCost(session.usage, model: session.model) }
         if session.usage.contextWindow == nil { session.usage.contextWindow = Pricing.contextWindow(for: session.model) }
         if session.hostApp == nil, session.surface == nil { session.hostApp = record.hostAppHint }
         return session
+    }
+
+    func summary(for record: SessionRecord) -> String? {
+        let session = record.session
+        let inputs = SummaryInputs(
+            state: session.state, tool: record.currentTool, target: record.currentTarget, title: session.title,
+            lastMessage: session.lastAssistantMessage, permission: session.pendingPermission?.summary
+        )
+        if let cached = summaryCache[record.key], cached.inputs == inputs { return cached.summary }
+        let summary = configuration.summarizer.summary(for: record)
+        summaryCache[record.key] = (inputs, summary)
+        return summary
     }
 
     /// The full record (lease, activity, estimate flag) for diagnostics.
@@ -221,11 +261,13 @@ public actor AgentEngine: AgentEngineProtocol {
         let now = Date()
         let context = attention
         var deferredSeen = false
+        var changed = false
         for signal in signals {
             // Only what is happening now may notify: not startup, not history, not old evidence.
             let recent = live && !signal.isReplay && !startingUp && signal.timestamp > now.addingTimeInterval(-60)
             metrics.signalsApplied += 1
             guard let change = store.apply(signal, now: now, watched: { recent ? context.isWatching($0) : true }) else { continue }
+            if change.recordChanged { changed = true }
             if let old = change.renamedFrom {
                 remapHeld(from: old, to: change.key)
                 attentionGate.rename(old, to: change.key)
@@ -239,7 +281,8 @@ public actor AgentEngine: AgentEngineProtocol {
             }
         }
         if deferredSeen { scheduleLeaseTick() }
-        markDirty()
+        // Repeats (a scan re-seeing the same process, an unchanged status file) change nothing.
+        if changed { markDirty() }
     }
 
     /// Wake when the earliest lease with a deferred state ends.
@@ -544,6 +587,7 @@ public actor AgentEngine: AgentEngineProtocol {
 
     public func attentionContextChanged(_ context: AttentionContext) async {
         attention = context
+        appActive = context.appIsActive
         if let focused = context.focusedSurface, context.isWatching(focused) {
             clearUnread(surface: focused)
             for (id, entry) in held where entry.request.surface == focused { releaseHeld(id, decision: .passthrough) }
@@ -566,10 +610,10 @@ public actor AgentEngine: AgentEngineProtocol {
 
     func scanLoop() async {
         while running, !Task.isCancelled {
-            let interval = surfaces.isEmpty ? configuration.systemScanInterval : configuration.surfaceScanInterval
+            let (interval, systemInterval) = scanIntervals
             try? await Task.sleep(for: .seconds(interval))
             guard running, !Task.isCancelled else { return }
-            if Date().timeIntervalSince(lastFullScan) >= configuration.systemScanInterval - 0.05 {
+            if Date().timeIntervalSince(lastFullScan) >= systemInterval - 0.05 {
                 await performScan(.system)
             } else {
                 await performScan(.descendants(of: configuration.appProcessID))
@@ -577,11 +621,24 @@ public actor AgentEngine: AgentEngineProtocol {
         }
     }
 
+    /// (sleep before the next scan, system-scan interval). Hidden app: no per-second pane scans
+    /// (nobody can type into a hidden pane) and half-rate system scans; exits stay event-driven.
+    var scanIntervals: (next: TimeInterval, system: TimeInterval) {
+        let system = appActive ? configuration.systemScanInterval : configuration.systemScanInterval * 2
+        return (surfaces.isEmpty || !appActive ? system : configuration.surfaceScanInterval, system)
+    }
+
+    /// The app became frontmost (true) or went to the background (false). Scans and the safety
+    /// poll slow down while hidden; also follows `AttentionContext.appIsActive`.
+    public func setAppActive(_ active: Bool) {
+        appActive = active
+    }
+
     func requestSurfaceScan() {
         guard running, configuration.processScanning, Date().timeIntervalSince(lastSurfaceScan) > 0.25 else { return }
         lastSurfaceScan = Date()
         let pid = configuration.appProcessID
-        tasks.append(Task { [weak self] in await self?.performScan(.descendants(of: pid)) })
+        tasks.append(Task { [weak self] in await self?.performScan(.descendants(of: pid), force: true) })
         tasks.removeAll { $0.isCancelled }
     }
 
@@ -592,7 +649,16 @@ public actor AgentEngine: AgentEngineProtocol {
 
     /// `deferTranscripts`: load newly bound transcripts in the background (used by `start()`
     /// so the first scan isn't held up by reading history).
-    func performScan(_ scope: ScanScope, deferTranscripts: Bool = false) async {
+    /// `force`: scan the app's tree even if its pids and names look unchanged.
+    func performScan(_ scope: ScanScope, deferTranscripts: Bool = false, force: Bool = false) async {
+        // The per-second pane scan only matters when the app's process tree changed.
+        // Pane agents judged by CPU (manifest adapters) still need their per-second sample.
+        if case .descendants(let pid) = scope, configuration.processProvider == nil, !force, !paneAgentsNeedCPUSamples(),
+            !(await scanner.descendantsChanged(of: pid))
+        {
+            metrics.skippedSurfaceScans += 1
+            return
+        }
         let result: ScanResult
         if let provider = configuration.processProvider {
             let roots = provider(scope)
@@ -617,7 +683,13 @@ public actor AgentEngine: AgentEngineProtocol {
             housekeeping(now: now)
             await evictIdleTranscripts()
             // Dated directories (Codex's YYYY/MM/DD) move at midnight.
-            if vnodeWatcher != nil { staticWatchPaths = await ingestor.staticWatchPaths() }
+            if vnodeWatcher != nil {
+                let paths = await ingestor.staticWatchPaths()
+                if paths != staticWatchPaths {
+                    staticWatchPaths = paths
+                    watchGeneration = -1
+                }
+            }
         }
         refreshWatches()
         var paths: [String] = []
@@ -638,6 +710,16 @@ public actor AgentEngine: AgentEngineProtocol {
         } else {
             for path in pending { await trackTranscript(path) }
         }
+    }
+
+    func paneAgentsNeedCPUSamples() -> Bool {
+        if let cached = paneCPUSamples, cached.generation == recordsGeneration { return cached.needed }
+        let needed = store.records.values.contains { record in
+            record.session.surface != nil && record.session.pid != nil && record.session.state != .ended
+                && adaptersByKind[record.key.kind]?.usesCPUHeuristic == true
+        }
+        paneCPUSamples = (recordsGeneration, needed)
+        return needed
     }
 
     func applyRoot(_ root: RootProcess, now: Date) {
@@ -673,6 +755,7 @@ public actor AgentEngine: AgentEngineProtocol {
     /// Host app, git and exit watching for a known root.
     func applyRootFacts(_ root: RootProcess) {
         guard let key = store.key(forPID: root.pid) else { return }
+        let before = store[key]
         store.update(key) { record in
             if root.surface == nil, record.session.surface == nil, let host = root.hostApp { record.session.hostApp = host }
             if let git = root.git {
@@ -681,6 +764,7 @@ public actor AgentEngine: AgentEngineProtocol {
             }
             if record.session.cwd.isEmpty, let cwd = root.process.cwd { record.session.cwd = cwd }
         }
+        if store[key] != before { markDirty() }
         if !exitWatcher.watchedPIDs.contains(root.pid) { exitWatcher.watch(root.pid) }
     }
 
@@ -701,6 +785,7 @@ public actor AgentEngine: AgentEngineProtocol {
             }
         }
         if !store.prune(now: now, retention: configuration.endedSessionRetention).isEmpty { markDirty() }
+        summaryCache = summaryCache.filter { store[$0.key] != nil }
     }
 
     func noteHistoryLoaded(_ duration: Duration) {
@@ -769,15 +854,25 @@ public actor AgentEngine: AgentEngineProtocol {
         refreshWatches()
     }
 
-    /// 1 s without kqueue, `safetyPollInterval` (5 s) while kqueue watches are healthy.
+    /// 1 s without kqueue, `safetyPollInterval` (5 s) while kqueue watches are healthy, three
+    /// times that while the app is hidden.
     var pollInterval: TimeInterval {
-        vnodeWatcher?.isHealthy == true ? configuration.safetyPollInterval : configuration.transcriptPollInterval
+        guard vnodeWatcher?.isHealthy == true else { return configuration.transcriptPollInterval }
+        return appActive ? configuration.safetyPollInterval : configuration.safetyPollInterval * 3
     }
 
     /// Keep kqueue watches on exactly what matters now: live sessions' transcripts and their
     /// directories (new files after `/clear`), per-session state files, and static paths.
-    func refreshWatches() {
+    func refreshWatches(force: Bool = false) {
         guard let watcher = vnodeWatcher else { return }
+        let now = Date()
+        // Nothing published since the last refresh, no watch dropped by an event, no audit due.
+        if !force, watchGeneration == recordsGeneration, watcher.watchedCount == lastWatchedCount,
+            missingWatchTargets.isEmpty || now < nextWatchAudit
+        {
+            return
+        }
+        watchGeneration = recordsGeneration
         var desired = Set(staticWatchPaths)
         for record in store.records.values where record.session.state.isLive {
             if let path = record.session.transcriptPath {
@@ -788,6 +883,15 @@ public actor AgentEngine: AgentEngineProtocol {
                 desired.formUnion(adapter.statePaths(for: record.session, home: configuration.homeDirectory))
             }
         }
+        // Same targets and nothing dropped by an event: skip the filesystem checks (they're the
+        // cost here), except for a periodic audit of targets that didn't exist yet.
+        if !force, desired == lastDesiredWatches, watcher.watchedCount == lastWatchedCount,
+            missingWatchTargets.isEmpty || now < nextWatchAudit
+        {
+            return
+        }
+        lastDesiredWatches = desired
+        nextWatchAudit = now.addingTimeInterval(15)
         // A path that doesn't exist yet is covered by its nearest existing parent (at most two
         // levels up, never the home directory itself) so its creation is noticed.
         let home = configuration.homeDirectory.standardizedFileURL.path
@@ -814,14 +918,14 @@ public actor AgentEngine: AgentEngineProtocol {
             watcher.unwatch(path)
             directoryStamps[path] = nil
         }
-        let now = Date()
         for path in resolved.subtracting(current) where watcher.watch(path) {
             var isDirectory: ObjCBool = false
             if FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue, directoryStamps[path] == nil {
                 directoryStamps[path] = now
             }
         }
-        metrics.watchedPaths = watcher.watchedPaths.count
+        metrics.watchedPaths = watcher.watchedCount
+        lastWatchedCount = metrics.watchedPaths
         // Directories that appeared after start may already hold new files: list them now.
         let newDirectories = appeared.filter { path in
             var isDirectory: ObjCBool = false
@@ -848,7 +952,8 @@ public actor AgentEngine: AgentEngineProtocol {
         let signals = await ingestor.handle(changes)
         apply(signals)
         await trackTranscripts(in: signals)
-        refreshWatches()
+        // A deleted/renamed file was unwatched by the watcher: re-check the targets.
+        refreshWatches(force: batch.contains { $0.isRemoved || $0.isRenamed || $0.isDirectory })
     }
 
     func pollTranscripts() async {
