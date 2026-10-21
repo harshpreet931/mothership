@@ -82,6 +82,18 @@ struct TitleCleanerTests {
         TitleCleaner.title(fromPrompt: prompt, fallback: fallback)
     }
 
+    @Test func longRepliesOnlyScanTheirStart() {
+        let filler = String(repeating: "More detail about the change follows here. ", count: 2000)
+        let reply = "**Done.** The parser now handles tabs.\n\n" + filler
+        #expect(TitleCleaner.head(reply).utf8.count <= 4000)
+        #expect(TitleCleaner.firstSentence(reply) == "Done.")
+        #expect(TitleCleaner.plainText(reply)?.hasPrefix("Done. The parser now handles tabs.") == true)
+        // A fence cut off by the limit is dropped rather than leaking code into the text.
+        let fenced = "Here is the fix:\n\n```swift\n" + String(repeating: "let value = compute()\n", count: 400)
+        #expect(TitleCleaner.head(fenced).contains("```") == false)
+        #expect(TitleCleaner.firstSentence(fenced) == "Here is the fix:")
+    }
+
     @Test func quotedScreenshotPathIsDropped() {
         #expect(title("'/Users/someone/Desktop/Screenshot 2026-10-21 at 10.15.32.png' the sidebar overflows on small windows") == "The sidebar overflows on small windows")
         #expect(title("there is one issue, that, '/var/folders/ab/xyz/T/TemporaryItems/img.png' shows a blank card")

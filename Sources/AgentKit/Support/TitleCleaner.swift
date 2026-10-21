@@ -126,6 +126,7 @@ public enum TitleCleaner {
     /// Markdown → one line of plain text: headings dropped, emphasis/code/links unwrapped,
     /// whitespace collapsed, home paths shortened to `~`, cut at a word boundary.
     public static func plainText(_ markdown: String, limit: Int = 140) -> String? {
+        let markdown = head(markdown)
         let body = RegexCache.replace(#"(?m)^\s{0,3}#{1,6}\s.*$"#, in: markdown, with: " ")
         var text = collapse(stripMarkdown(body))
         if !isMeaningful(text) { text = collapse(stripMarkdown(markdown)) }
@@ -149,7 +150,20 @@ public enum TitleCleaner {
     }
 
     /// The first sentence of an assistant reply, plain text, at most `limit` characters.
+    /// Only the start of a long reply can hold its first sentence or a 140-char body; regex work
+    /// over the rest (replies run to tens of KB) is wasted.
+    static func head(_ text: String, maxCharacters: Int = 4000) -> String {
+        guard text.utf8.count > maxCharacters else { return text }
+        let prefix = text.prefix(maxCharacters)
+        // Don't cut inside a code fence: drop an unterminated trailing fence.
+        if let fence = prefix.range(of: "```", options: .backwards), prefix[..<fence.lowerBound].components(separatedBy: "```").count % 2 == 1 {
+            return String(prefix[..<fence.lowerBound])
+        }
+        return String(prefix)
+    }
+
     public static func firstSentence(_ markdown: String, limit: Int = summaryLimit) -> String? {
+        let markdown = head(markdown)
         // Headings ("## Summary") label a reply; they aren't its first sentence.
         let body = RegexCache.replace(#"(?m)^\s{0,3}#{1,6}\s.*$"#, in: markdown, with: "")
         let paragraphs = stripMarkdown(body).components(separatedBy: "\n").map(collapse).filter { isMeaningful($0) }

@@ -1,5 +1,6 @@
 import Foundation
 import ShipModel
+import Synchronization
 
 /// A small embedded price table for cost *estimates* (USD per million tokens).
 /// Agents that report their own cost (OpenCode) override it; everything else is an estimate
@@ -69,10 +70,15 @@ public enum Pricing {
         return name.hasPrefix("claude") ? name.replacingOccurrences(of: ".", with: "-") : name
     }
 
+    private static let rates = Mutex<[String: Rate?]>([:])
+
     public static func rate(for model: String?) -> Rate? {
         guard let model, !model.isEmpty else { return nil }
+        if let cached = rates.withLock({ $0[model] }) { return cached }
         let name = normalize(model)
-        return table.filter { name.hasPrefix($0.prefix) }.max { $0.prefix.count < $1.prefix.count }?.rate
+        let rate = table.filter { name.hasPrefix($0.prefix) }.max { $0.prefix.count < $1.prefix.count }?.rate
+        rates.withLock { $0[model] = .some(rate) }
+        return rate
     }
 
     /// Estimated USD for a usage total, or nil when the model is unknown.
