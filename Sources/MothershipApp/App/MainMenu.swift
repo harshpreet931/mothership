@@ -68,6 +68,15 @@ enum MainMenu {
     private static func fileMenu(router: CommandRouter) -> NSMenu {
         let menu = NSMenu(title: "File")
         menu.addItem(command(.newWorkspace, router: router))
+        let recent = NSMenuItem(title: "New Workspace In", action: nil, keyEquivalent: "")
+        let recentMenu = NSMenu(title: "New Workspace In")
+        let delegate = RecentProjectsMenu(router: router)
+        recentMenu.delegate = delegate
+        router.retainedMenuDelegates.append(delegate)
+        recent.submenu = recentMenu
+        menu.addItem(recent)
+        menu.addItem(command(.openFolder, router: router))
+        menu.addItem(.separator())
         menu.addItem(command(.openBrowser, router: router))
         menu.addItem(.separator())
         menu.addItem(command(.splitRight, router: router))
@@ -149,5 +158,38 @@ enum MainMenu {
         menu.addItem(.separator())
         menu.addItem(withTitle: "Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
         return menu
+    }
+}
+
+/// File → New Workspace In: recent projects, rebuilt each time the menu opens.
+@MainActor
+final class RecentProjectsMenu: NSObject, NSMenuDelegate {
+    private weak var router: CommandRouter?
+
+    init(router: CommandRouter) {
+        self.router = router
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        guard let router else { return }
+        let projects = router.model.recentProjects.prefix(10)
+        for project in projects {
+            let item = NSMenuItem(title: project.name, action: #selector(CommandRouter.newWorkspaceInProject(_:)), keyEquivalent: "")
+            item.target = router
+            item.representedObject = project.path
+            item.toolTip = project.displayPath
+            menu.addItem(item)
+        }
+        if projects.isEmpty {
+            let empty = NSMenuItem(title: "No Recent Projects", action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            menu.addItem(empty)
+        }
+        menu.addItem(.separator())
+        let choose = NSMenuItem(title: AppCommand.openFolder.title, action: #selector(CommandRouter.performCommand(_:)), keyEquivalent: "")
+        choose.target = router
+        choose.representedObject = AppCommand.openFolder.rawValue
+        menu.addItem(choose)
     }
 }

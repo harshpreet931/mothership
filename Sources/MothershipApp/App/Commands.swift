@@ -5,7 +5,7 @@ import ShipProtocol
 /// Every user-facing command. The main menu and the command palette are both built from
 /// this list so titles and shortcuts never drift apart.
 enum AppCommand: String, CaseIterable {
-    case newWorkspace, renameWorkspace, closeWorkspace
+    case newWorkspace, openFolder, renameWorkspace, closeWorkspace
     case splitRight, splitDown, openBrowser, closePane, zoomPane, equalizeSplits
     case focusLeft, focusRight, focusUp, focusDown
     case nextWorkspace, previousWorkspace, jumpToAttention
@@ -17,6 +17,7 @@ enum AppCommand: String, CaseIterable {
     var title: String {
         switch self {
         case .newWorkspace: "New Workspace"
+        case .openFolder: "Open Folder…"
         case .renameWorkspace: "Rename Workspace…"
         case .closeWorkspace: "Close Workspace"
         case .splitRight: "Split Right"
@@ -48,6 +49,7 @@ enum AppCommand: String, CaseIterable {
     var symbol: String {
         switch self {
         case .newWorkspace: "plus.rectangle.on.rectangle"
+        case .openFolder: "folder"
         case .renameWorkspace: "pencil"
         case .closeWorkspace: "xmark.rectangle"
         case .splitRight: "rectangle.split.2x1"
@@ -80,6 +82,7 @@ enum AppCommand: String, CaseIterable {
     var keyEquivalent: (String, NSEvent.ModifierFlags)? {
         switch self {
         case .newWorkspace: ("t", .command)
+        case .openFolder: ("o", .command)
         case .renameWorkspace: nil
         case .closeWorkspace: ("w", [.command, .shift])
         case .splitRight: ("d", .command)
@@ -137,6 +140,8 @@ enum AppCommand: String, CaseIterable {
 final class CommandRouter: NSObject, NSMenuItemValidation {
     let model: AppModel
     weak var windowController: MainWindowController?
+    /// Delegates of dynamic menus (NSMenu holds them weakly).
+    var retainedMenuDelegates: [NSObject] = []
     var openSettings: () -> Void = {}
 
     init(model: AppModel) {
@@ -166,6 +171,13 @@ final class CommandRouter: NSObject, NSMenuItemValidation {
         NSApp.orderFrontStandardAboutPanel(options: options)
     }
 
+    /// File → New Workspace In → a recent project.
+    @objc func newWorkspaceInProject(_ sender: Any?) {
+        guard let path = (sender as? NSMenuItem)?.representedObject as? String else { return }
+        model.noteProjectUsed(path)
+        model.createWorkspace(cwd: path)
+    }
+
     @objc func selectWorkspaceByTag(_ sender: Any?) {
         guard let item = sender as? NSMenuItem else { return }
         model.selectWorkspace(at: item.tag)
@@ -174,6 +186,7 @@ final class CommandRouter: NSObject, NSMenuItemValidation {
     func perform(_ command: AppCommand) {
         switch command {
         case .newWorkspace: model.createWorkspace()
+        case .openFolder: model.openFolderAsWorkspace()
         case .renameWorkspace:
             if let id = model.selectedWorkspace?.id {
                 if windowController?.isSidebarCollapsed == true { windowController?.toggleSidebar() }
@@ -205,7 +218,7 @@ final class CommandRouter: NSObject, NSMenuItemValidation {
         case .resetFontSize: model.runtime.resetFontSize()
         case .clearScreen:
             guard model.screen == .workspaces, !model.isPalettePresented else { return }
-            model.focusedSurface?.terminal?.performAction("clear_screen")
+            model.focusedSurface?.terminal?.clearScreen()
         }
         if [.increaseFontSize, .decreaseFontSize, .resetFontSize].contains(command) {
             UserDefaults.standard.set(model.runtime.hasFontSizeOverride ? Double(model.runtime.fontSize) : 0, forKey: PreferenceKey.fontSize)

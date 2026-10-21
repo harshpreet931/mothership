@@ -10,6 +10,8 @@ struct ComposerView: View {
     @State private var text = ""
     @FocusState private var focused: Bool
     @State private var hovering = false
+    /// "Start in" (＋ menu): the folder for the next task, else `taskDirectory()`.
+    @State private var taskFolder: String?
 
     private static let agents: [AgentKind] = [.claude, .codex, .opencode, .gemini]
 
@@ -37,7 +39,7 @@ struct ComposerView: View {
         Button { model.openComposer() } label: {
             HStack(spacing: 8) {
                 AgentMark(kind: model.composerTarget?.kind ?? model.composerAgent, size: 12, color: Sky.secondary)
-                Text(model.composerPlaceholder)
+                Text(placeholder)
                     .font(.system(size: 12.5))
                     .foregroundStyle(Sky.secondary)
                     .lineLimit(1)
@@ -63,7 +65,7 @@ struct ComposerView: View {
         .buttonStyle(.plain)
         .onHover { hovering in withAnimation(Sky.hover) { self.hovering = hovering } }
         .help("Message the focused agent, or start a task (⌘L)")
-        .accessibilityLabel(model.composerPlaceholder)
+        .accessibilityLabel(placeholder)
     }
 
     private var field: some View {
@@ -72,7 +74,7 @@ struct ComposerView: View {
         return HStack(spacing: 10) {
             AgentMark(kind: target?.kind ?? model.composerAgent, size: 14, color: Sky.secondary)
                 .opacity(model.composerBroadcast ? 0.4 : 1)
-            TextField(model.composerPlaceholder, text: $text, axis: .horizontal)
+            TextField(placeholder, text: $text, axis: .horizontal)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13.5))
                 .foregroundStyle(Sky.ink)
@@ -112,6 +114,29 @@ struct ComposerView: View {
                         }
                     }
                 }
+                if startsTask {
+                    Menu("Start in") {
+                        let current = taskFolder ?? model.taskDirectory()
+                        ForEach(model.recentProjects.prefix(8)) { project in
+                            Button {
+                                taskFolder = project.path
+                            } label: {
+                                if current == project.path {
+                                    Label(project.name, systemImage: "checkmark")
+                                } else {
+                                    Text(project.name)
+                                }
+                            }
+                            .help(project.displayPath)
+                        }
+                        Divider()
+                        Button("Choose Folder…") {
+                            Task {
+                                if let folder = await model.chooseFolder(message: "Where should the next task run?") { taskFolder = folder }
+                            }
+                        }
+                    }
+                }
                 Divider()
                 Toggle("Broadcast to all agents", isOn: Binding(get: { model.composerBroadcast }, set: { model.composerBroadcast = $0 }))
                 if let selection = model.focusedSurface?.terminal?.selectedText, !selection.isEmpty {
@@ -146,11 +171,39 @@ struct ComposerView: View {
         .animation(Sky.spring, value: queued)
     }
 
+    /// Nothing to talk to: ⏎ starts a task in a new workspace.
+    private var startsTask: Bool { model.composerTarget == nil && !model.composerBroadcast }
+
+    private var placeholder: String {
+        if startsTask, let folder = taskFolder {
+            return "Start a task in " + (folder as NSString).lastPathComponent + "…"
+        }
+        return model.composerPlaceholder
+    }
+
     private func send(queue: Bool) {
-        let prompt = text
-        guard !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        model.submitComposer(prompt, queue: queue)
-        text = ""
+        let prompt = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prompt.isEmpty else { return }
+        guard startsTask else {
+            model.submitComposer(prompt, queue: queue)
+            text = ""
+            return
+        }
+        let agent = model.composerAgent
+        if let folder = taskFolder ?? model.taskDirectory() {
+            model.startTask(prompt, agent: agent, directory: folder)
+            text = ""
+            taskFolder = nil
+            model.closeComposer(refocusPane: false)
+            return
+        }
+        // No project to start in: ask, and keep the text if the panel is cancelled.
+        Task {
+            guard let folder = await model.chooseFolder(message: "Where should \(agent.displayName) work on this task?") else { return }
+            model.startTask(prompt, agent: agent, directory: folder)
+            if text.trimmingCharacters(in: .whitespacesAndNewlines) == prompt { text = "" }
+            model.closeComposer(refocusPane: false)
+        }
     }
 
     private func dictate() {
