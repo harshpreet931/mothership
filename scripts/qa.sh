@@ -15,7 +15,9 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-QA_ROOT="${MOTHERSHIP_QA_ROOT:-${TMPDIR:-/tmp}/mothership-qa}"
+# One scratch root per checkout: runs from different worktrees never share a pid file, home
+# or session host.
+QA_ROOT="${MOTHERSHIP_QA_ROOT:-${TMPDIR:-/tmp}/mothership-qa-$(printf '%s' "$ROOT" | cksum | cut -d' ' -f1)}"
 # Normalized (TMPDIR ends in "/"), so paths compare equal to what shells report.
 QA_ROOT="$(printf '%s' "$QA_ROOT" | tr -s /)"
 QA_ROOT="${QA_ROOT%/}"
@@ -339,7 +341,8 @@ graceful_quit() { graceful_quit_pid "$APP_PID"; }
 gone_within() { local deadline=$((SECONDS + $2)); while (( SECONDS < deadline )); do alive "$1" || return 0; sleep 0.5; done; return 1; }
 
 # 8. Persistent sessions: mshipd owns the PTYs, so panes outlive the app.
-C="$(ms new --cwd "$WORK/plain" --name "QA Counter" -- 'n=0; while :; do n=$((n+1)); echo "qa-tick $n"; sleep 0.5; done')"
+# 300 lines first, so the oldest ones are only in scrollback.
+C="$(ms new --cwd "$WORK/plain" --name "QA Counter" -- 'seq -f "qa-old %g" 1 300; n=0; while :; do n=$((n+1)); echo "qa-tick $n"; sleep 0.5; done')"
 L="$(ms new --cwd "$WORK/plain" --name "QA Pager" -- "less $WORK/long.txt")"
 D="$(ms new --cwd "$WORK/plain" --name "QA Query")"
 check "persistent: a counter runs" wait_for "$C" '^qa-tick 4$' 10
@@ -366,11 +369,12 @@ sleep 1
 T1="$(last_tick "$C")"; sleep 1.5; T2="$(last_tick "$C")"
 DETAIL="tick before quit ${TICK_BEFORE:-?}, after relaunch ${T1:-?} then ${T2:-?}"
 check "  counter kept counting while the app was gone" eval '(( ${T1:-0} > ${TICK_BEFORE:-0} + 4 && ${T2:-0} > ${T1:-0} ))'
-check "  older lines are in scrollback" eval 'screen "$C" 3000 | grep -q "^qa-tick 1$"'
+# (The first line follows the scratch .zshrc's fake prompt.)
+check "  older lines are in scrollback" eval 'screen "$C" 3000 | grep -qE "(^|> )qa-old 1$" && ! screen "$C" 0 | grep -qE "(^|> )qa-old 1$"'
 RESTORED_NAMES="$(workspace_names)"
 check "restore keeps workspace names" eval '[[ -z "$(comm -23 <(sort <<<"$NAMES_NOW") <(sort <<<"$RESTORED_NAMES"))" ]]'
 check "  full-screen TUI redraws after reattach" eval 'wait_for "$L" "^qa-line 1$" 6 && ! screen "$L" 0 | grep -q "^qa>"'
-ms send --surface "$L" --key q >/dev/null
+ms send --surface "$L" q >/dev/null
 check "  the TUI still takes keys (q quits less)" wait_for "$L" '^qa>' 8
 # Replaying `ESC [ c` makes the terminal answer again; that answer must not reach the shell.
 sleep 1
