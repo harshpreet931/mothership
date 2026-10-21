@@ -38,16 +38,28 @@ extension AppModel {
     }
 
     /// "Start a task…": the agent with the prompt, in a new workspace beside the current one.
-    func startTask(_ prompt: String, agent: AgentKind) {
+    /// The folder is `directory` (e.g. picked from the recent-projects menu), else the focused
+    /// project, else the most recent one; with none, the user is asked. An agent never starts
+    /// in `$HOME` unless the user chose it. The agent's command line is run by the pane's
+    /// login shell, not typed into it.
+    func startTask(_ prompt: String, agent: AgentKind, directory: String? = nil) {
         let engine = self.engine
-        let directory = focusedSurface?.terminal?.workingDirectory ?? selectedWorkspace?.currentDirectory
+        let chosen = directory ?? taskDirectory()
         Task { [weak self] in
+            guard let self else { return }
+            var folder = chosen
+            if folder == nil {
+                folder = await self.chooseFolder(message: "Where should \(agent.displayName) work on this task?")
+            }
+            guard let folder else { return }
+            self.noteProjectUsed(folder)
             let command = await engine.launchCommand(agent, prompt: prompt)
-            self?.createWorkspace(cwd: directory, command: command)
+            self.createWorkspace(cwd: folder, command: command)
         }
     }
 
-    /// Bracketed paste, then Enter.
+    /// Pastes the text, then presses Enter. Both wait until the pane is ready for input (see
+    /// `TerminalSurfaceController.isReady`), so a shell still loading its rc never echoes it.
     func deliver(_ text: String, to surface: SurfaceID) {
         guard let terminal = self.surface(surface)?.terminal else { return }
         terminal.paste(text: text)

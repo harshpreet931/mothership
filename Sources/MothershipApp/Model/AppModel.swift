@@ -212,27 +212,33 @@ final class AppModel {
 
     // MARK: Workspaces
 
-    /// Creates a workspace with one terminal and selects it (when `focus`).
+    /// Creates a workspace with one terminal and selects it (when `focus`). Without a `cwd` it
+    /// opens in the focused project, else the most recent project, else home.
     @discardableResult
     func createWorkspace(
         cwd: String? = nil, name: String? = nil, command: String? = nil, focus: Bool = true,
         id: WorkspaceID = WorkspaceID(), insertAfterSelection: Bool = true
     ) -> (Workspace, PaneSurface) {
-        let directory = Self.resolveDirectory(cwd ?? focusedSurface?.terminal?.workingDirectory ?? focusedSurface?.cwd)
+        let fallback = focusedSurface?.terminal?.workingDirectory ?? focusedSurface?.cwd
+        let directory = Self.resolveDirectory(cwd ?? taskDirectory() ?? fallback)
         let surfaceID = SurfaceID()
+        let trimmedName = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let customName = trimmedName?.isEmpty == false ? trimmedName : nil
         let workspace = Workspace(
-            id: id, name: name ?? PathDisplay.folderName(directory), hasCustomName: name != nil,
+            id: id, name: customName ?? PathDisplay.folderName(directory), hasCustomName: customName != nil,
             rootDirectory: directory, layout: .leaf(surfaceID)
         )
         let surface = makeSurface(id: surfaceID, kind: .terminal, workspace: workspace, cwd: directory, startupCommand: command)
         workspace.surfaces[surfaceID] = surface
         workspace.focusedSurfaceID = surfaceID
-        workspace.refreshGit()
         if insertAfterSelection, let selected = selectedWorkspaceID, let index = workspaces.firstIndex(where: { $0.id == selected }) {
             workspaces.insert(workspace, at: index + 1)
         } else {
             workspaces.append(workspace)
         }
+        adoptForNaming(workspace)
+        workspace.refreshGit()
+        refreshWorkspaceNames()
         if focus || selectedWorkspaceID == nil {
             selectWorkspace(workspace.id)
         }
@@ -277,6 +283,7 @@ final class AppModel {
         let workspace = workspaces[index]
         for surface in workspace.surfaces.values { tearDown(surface) }
         workspaces.remove(at: index)
+        refreshWorkspaceNames()
         if selectedWorkspaceID == id {
             selectedWorkspaceID = nil
             if !workspaces.isEmpty {
@@ -301,11 +308,12 @@ final class AppModel {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
             workspace.hasCustomName = false
-            workspace.refreshGit()
+            workspace.restoredName = nil
         } else {
             workspace.name = trimmed
             workspace.hasCustomName = true
         }
+        refreshWorkspaceNames()
         renamingWorkspaceID = nil
         scheduleSave()
     }
@@ -514,6 +522,7 @@ final class AppModel {
                 }
             }
             if changedBinding { scheduleSave() }
+            refreshWorkspaceNames()
             flushComposerQueue()
             pruneToasts()
             onSessionsChanged?(list)
@@ -742,10 +751,16 @@ final class AppModel {
             workspace.focusedSurfaceID = saved.focusedSurface.flatMap { workspace.surfaces[$0] != nil ? $0 : nil }
                 ?? layout.surfaceIDs.first
             workspace.currentDirectory = workspace.focusedSurface?.cwd ?? saved.rootDirectory
-            workspace.refreshGit()
-            if saved.hasCustomName { workspace.name = saved.name }
+            if !saved.hasCustomName {
+                // Keep the name it had (an agent's title, a " 2") until it moves or an agent names it.
+                workspace.restoredName = saved.name
+                workspace.restoredDirectory = workspace.currentDirectory
+            }
             workspaces.append(workspace)
+            adoptForNaming(workspace)
+            workspace.refreshGit()
         }
+        refreshWorkspaceNames()
         if let selected = snapshot.selectedWorkspace, workspace(id: selected) != nil {
             selectWorkspace(selected)
         } else if let first = workspaces.first {
