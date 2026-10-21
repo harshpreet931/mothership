@@ -71,6 +71,25 @@ struct Arguments {
         return value
     }
 
+    /// Every occurrence of a repeatable `--name value`, in order.
+    mutating func options(_ name: String) throws(CLIFailure) -> [String] {
+        var values: [String] = []
+        var index = 0
+        while index < items.count {
+            if items[index] == name {
+                guard index + 1 < items.count else { throw usageError("\(name) needs a value", command: command) }
+                values.append(items[index + 1])
+                items.removeSubrange(index...(index + 1))
+            } else if items[index].hasPrefix(name + "=") {
+                values.append(String(items[index].dropFirst(name.count + 1)))
+                items.remove(at: index)
+            } else {
+                index += 1
+            }
+        }
+        return values
+    }
+
     mutating func intOption(_ names: String...) throws(CLIFailure) -> Int? {
         var value: String?
         for name in names where value == nil { value = try option(name) }

@@ -23,6 +23,8 @@ let commands: [String: ([String]) throws(CLIFailure) -> Int32] = [
     "browser": Commands.browser,
     "notify": Commands.notify,
     "status": Commands.status,
+    "approve": Commands.approve,
+    "deny": Commands.deny,
     "ping": Commands.ping,
 ]
 

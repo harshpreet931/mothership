@@ -203,6 +203,22 @@ struct EngineTests {
         #expect(try #require(await engine.sessions().first).state == .ended)
     }
 
+    /// Claude Code shows its own prompt while our hook is held; answering there runs the tool
+    /// (PostToolUse) and must release the hook right away, not at the hold timeout.
+    @Test func claudeAnsweredInTUIReleasesHold() async throws {
+        let home = try TempHome()
+        defer { home.remove() }
+        let engine = makeEngine(home: home, holdTimeout: 60)
+        let pending = Task { await engine.handleHook(hook("PermissionRequest", permissionPayload, surface: surface)) }
+        #expect(await waitUntil { await !engine.pendingPermissions().isEmpty })
+        let ran = #"{"session_id":"s-1","cwd":"/repo","hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"rm -rf build"},"tool_response":{}}"#
+        _ = await engine.handleHook(hook("PostToolUse", ran, surface: surface))
+        let started = Date()
+        #expect(await pending.value == .passthrough)
+        #expect(Date().timeIntervalSince(started) < 2)
+        #expect(await engine.pendingPermissions().isEmpty)
+    }
+
     @Test func openCodeReplyInTUIReleasesHold() async throws {
         let home = try TempHome()
         defer { home.remove() }

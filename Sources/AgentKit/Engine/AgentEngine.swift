@@ -274,6 +274,7 @@ public actor AgentEngine: AgentEngineProtocol {
             }
             for replaced in change.replaced { releaseHeld(forSession: replaced) }
             if change.current == .ended { releaseHeld(forSession: change.key) }
+            if change.recordChanged, !held.isEmpty { releaseSuperseded(for: change.key) }
             if store[change.key]?.deferred != nil { deferredSeen = true }
             if change.stateChanged { attentionGate.note(change.key, from: change.previous, to: change.current, at: signal.timestamp) }
             if recent, !suppressAttention, change.stateChanged, let previous = change.previous {
@@ -494,6 +495,15 @@ public actor AgentEngine: AgentEngineProtocol {
         }
         broadcast(.permissionResolved(id))
         markDirty()
+    }
+
+    /// Claude Code shows its own prompt while the hook is held; when the user answers there the
+    /// session moves on and its card clears. Release the hook then instead of at the timeout.
+    func releaseSuperseded(for key: AgentSessionKey) {
+        let current = store[key]?.session.pendingPermission?.id
+        for (id, entry) in held where entry.request.session == key && id != current {
+            releaseHeld(id, decision: .passthrough)
+        }
     }
 
     func releaseHeld(forSession key: AgentSessionKey) {

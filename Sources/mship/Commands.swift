@@ -56,11 +56,12 @@ enum Commands {
         var args = Arguments(arguments, command: "send")
         let surfaceArgument = try args.option("--surface", "-s")
         let submit = args.flag("--submit", "-r")
+        let keys = try args.options("--key")
         var words = try args.positionals() + args.trailing
-        if words == ["-"] || (words.isEmpty && !Input.stdinIsTerminal) {
+        if words == ["-"] || (words.isEmpty && keys.isEmpty && !Input.stdinIsTerminal) {
             words = [String(decoding: Input.readAll(idle: .seconds(5), total: .seconds(60)), as: UTF8.self)]
         }
-        guard !words.isEmpty else { throw usageError("nothing to send", command: "send") }
+        guard !words.isEmpty || !keys.isEmpty else { throw usageError("nothing to send", command: "send") }
         let surface: SurfaceID
         if let surfaceArgument {
             surface = try parseSurface(surfaceArgument, command: "send")
@@ -69,7 +70,7 @@ enum Commands {
         } else {
             throw usageError("--surface is required outside a Mothership pane", command: "send")
         }
-        let _: OKResult = try callApp(.surfaceSendText, SendTextParams(surface: surface, text: words.joined(separator: " "), submit: submit))
+        let _: OKResult = try callApp(.surfaceSendText, SendTextParams(surface: surface, text: words.joined(separator: " "), submit: submit, keys: keys.isEmpty ? nil : keys))
         return ExitCode.success
     }
 
@@ -169,6 +170,34 @@ enum Commands {
         guard let title = words.first, !title.isEmpty else { throw usageError("missing title", command: "notify") }
         let body = words.dropFirst().joined(separator: " ")
         let _: OKResult = try callApp(.notify, NotifyParams(title: title, body: body, surface: surface ?? caller.surface))
+        return ExitCode.success
+    }
+
+    static func approve(_ arguments: [String]) throws(CLIFailure) -> Int32 {
+        try resolvePermission(arguments, allow: true, command: "approve")
+    }
+
+    static func deny(_ arguments: [String]) throws(CLIFailure) -> Int32 {
+        try resolvePermission(arguments, allow: false, command: "deny")
+    }
+
+    private static func resolvePermission(_ arguments: [String], allow: Bool, command: String) throws(CLIFailure) -> Int32 {
+        var args = Arguments(arguments, command: command)
+        let surface = try args.option("--surface", "-s").map { (raw) throws(CLIFailure) in try parseSurface(raw, command: command) }
+        let reason = allow ? nil : try args.option("--reason", "-m")
+        let positionals = try args.positionals()
+        guard positionals.count <= 1 else { throw usageError("expected at most one request id", command: command) }
+        let id: PermissionRequestID?
+        if let raw = positionals.first {
+            guard let parsed = PermissionRequestID(string: raw) else { throw usageError("not a request id: \(raw)", command: command) }
+            id = parsed
+        } else {
+            id = nil
+        }
+        let params = ResolvePermissionParams(id: id, surface: surface ?? caller.surface, allow: allow, reason: reason)
+        let result: ResolvePermissionResult = try callApp(.permissionResolve, params)
+        let request = result.request
+        Output.line("\(allow ? "Allowed" : "Denied") \(request.toolName): \(request.summary)")
         return ExitCode.success
     }
 

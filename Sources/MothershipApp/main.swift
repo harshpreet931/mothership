@@ -1,4 +1,9 @@
 import AppKit
+import TerminalEngine
+
+// Before anything spawns a shell: don't hand panes the identity of whatever launched us.
+let scrubbed = InheritedEnvironment.scrub()
+if !scrubbed.isEmpty { NSLog("Mothership: cleared inherited %@", scrubbed.joined(separator: ", ")) }
 
 MainActor.assumeIsolated {
     let app = NSApplication.shared

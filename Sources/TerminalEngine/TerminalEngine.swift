@@ -15,4 +15,22 @@ public enum TerminalKeyInput: Sendable, Equatable {
     case backspace
     /// Ctrl+C.
     case interrupt
+    case up, down, left, right, space
+
+    /// `mship send --key` names: enter, escape, tab, backspace, ctrl-c, up, down, left, right, space.
+    public init?(name: String) {
+        switch name.lowercased() {
+        case "enter", "return": self = .enter
+        case "escape", "esc": self = .escape
+        case "tab": self = .tab
+        case "backspace": self = .backspace
+        case "ctrl-c", "interrupt": self = .interrupt
+        case "up": self = .up
+        case "down": self = .down
+        case "left": self = .left
+        case "right": self = .right
+        case "space": self = .space
+        default: return nil
+        }
+    }
 }

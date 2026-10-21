@@ -1,6 +1,7 @@
 import Foundation
 import ShipModel
 import ShipProtocol
+import TerminalEngine
 
 /// Control-plane actions, one per `ShipProtocol.ControlMethod` the app implements. The
 /// `ControlHandling` router decodes params, resolves a nil `surface` from the caller's
@@ -40,8 +41,13 @@ extension AppModel {
     func sendText(_ params: SendTextParams) throws(RPCError) {
         guard let surface = surface(params.surface) else { throw .notFound("No surface \(params.surface)") }
         guard let terminal = surface.terminal else { throw .invalidParams("Surface \(params.surface) is not a terminal") }
-        terminal.paste(text: params.text)
+        let keys = try (params.keys ?? []).map { (name) throws(RPCError) -> TerminalKeyInput in
+            guard let key = TerminalKeyInput(name: name) else { throw .invalidParams("Unknown key '\(name)'") }
+            return key
+        }
+        if !params.text.isEmpty { terminal.paste(text: params.text) }
         if params.submit { terminal.sendKey(.enter) }
+        for key in keys { terminal.sendKey(key) }
     }
 
     /// `surface.readScreen`

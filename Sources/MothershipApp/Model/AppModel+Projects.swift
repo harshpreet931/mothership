@@ -172,6 +172,13 @@ extension AppModel {
         alert.addButton(withTitle: "Cancel")
         alert.buttons.last?.keyEquivalent = "\u{1b}"
         NSApp.activate()
+        // QA: MOTHERSHIP_DEBUG_QUIT_ANSWER=cancel|quit clicks that real button once the alert is up.
+        if let answer = ProcessInfo.processInfo.environment["MOTHERSHIP_DEBUG_QUIT_ANSWER"] {
+            let button = answer == "quit" ? alert.buttons.first : alert.buttons.last
+            RunLoop.main.perform(inModes: [.modalPanel]) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { button?.performClick(nil) }
+            }
+        }
         let quit = alert.runModal() == .alertFirstButtonReturn
         NSLog("Mothership: quit %@", quit ? "confirmed" : "cancelled")
         if !quit, !NSApp.windows.contains(where: { $0 is MainWindow && $0.isVisible }) {

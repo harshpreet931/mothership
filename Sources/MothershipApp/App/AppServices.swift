@@ -149,6 +149,22 @@ final class AppServices {
         surface.flatMap { model.workspace(containing: $0)?.name }
     }
 
+    /// The held request to answer: by id, else the one on `surface`, else the only one waiting.
+    fileprivate func pendingPermission(id: PermissionRequestID?, surface: SurfaceID?) throws(RPCError) -> PermissionRequest {
+        let pending = model.sessions.compactMap(\.pendingPermission)
+        if let id {
+            guard let request = pending.first(where: { $0.id == id }) else { throw .notFound("No waiting request \(id)") }
+            return request
+        }
+        if let surface, let request = pending.first(where: { $0.surface == surface }) { return request }
+        guard pending.count == 1, let only = pending.first else {
+            throw pending.isEmpty
+                ? .notFound("No permission request is waiting")
+                : .invalidParams("\(pending.count) requests are waiting; pass an id (see `mship status`)")
+        }
+        return only
+    }
+
     private func notify(_ params: NotifyParams, caller: CallerContext) {
         let surface = params.surface ?? caller.surface
         let context = currentContext()
@@ -179,6 +195,13 @@ final class AppServices {
                 workspaces: await model.workspaceSummaries(),
                 sessions: params.includeExternal ? sessions : sessions.filter { $0.surface != nil }
             )
+        }
+
+        router.on(.permissionResolve) { [weak self] (params: ResolvePermissionParams, context) -> ResolvePermissionResult in
+            guard let self else { throw RPCError.internalError("Mothership is shutting down") }
+            let request = try await self.pendingPermission(id: params.id, surface: params.surface ?? context.caller.surface)
+            await model.resolvePermission(id: request.id, decision: params.allow ? .allow : .deny(reason: params.reason))
+            return ResolvePermissionResult(request: request)
         }
 
         router.on(.workspaceNew) { (params: NewWorkspaceParams, _) in await model.newWorkspace(params) }

@@ -10,6 +10,8 @@ public enum ControlMethod: String, Sendable, CaseIterable {
     case notify
     /// params: `StatusParams` → result: `StatusResult`
     case status
+    /// params: `ResolvePermissionParams` → result: `ResolvePermissionResult`
+    case permissionResolve = "permission.resolve"
 
     /// params: `NewWorkspaceParams` → result: `SurfaceResult`
     case workspaceNew = "workspace.new"
@@ -97,6 +99,26 @@ public struct StatusResult: Sendable, Codable, Equatable {
     }
 }
 
+/// Answers a held permission request. With no `id`, the request on `surface` (or the caller's
+/// pane) is answered, or the only one waiting.
+public struct ResolvePermissionParams: Sendable, Codable, Equatable {
+    public var id: PermissionRequestID?
+    public var surface: SurfaceID?
+    public var allow: Bool
+    public var reason: String?
+    public init(id: PermissionRequestID? = nil, surface: SurfaceID? = nil, allow: Bool, reason: String? = nil) {
+        self.id = id
+        self.surface = surface
+        self.allow = allow
+        self.reason = reason
+    }
+}
+
+public struct ResolvePermissionResult: Sendable, Codable, Equatable {
+    public var request: PermissionRequest
+    public init(request: PermissionRequest) { self.request = request }
+}
+
 public struct NewWorkspaceParams: Sendable, Codable, Equatable {
     public var name: String?
     public var cwd: String?
@@ -142,10 +164,13 @@ public struct SendTextParams: Sendable, Codable, Equatable {
     public var text: String
     /// Press Enter after pasting.
     public var submit: Bool
-    public init(surface: SurfaceID, text: String, submit: Bool = false) {
+    /// Keys pressed after the text, by name (`enter`, `down`, `ctrl-c`, …), for driving TUIs.
+    public var keys: [String]?
+    public init(surface: SurfaceID, text: String, submit: Bool = false, keys: [String]? = nil) {
         self.surface = surface
         self.text = text
         self.submit = submit
+        self.keys = keys
     }
 }
 

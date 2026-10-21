@@ -23,6 +23,8 @@ enum Help {
         ], "Browser commands act on this workspace's browser pane; --browser ID picks another."),
         ("AGENTS & ATTENTION", [
             ("status", "", "Every agent session: workspace, state, cwd, summary (--json)"),
+            ("approve", "[ID]", "Allow the permission request an agent is waiting on"),
+            ("deny", "[ID]", "Deny it (--reason tells the agent why)"),
             ("notify", "TITLE [BODY]", "A notification that opens this pane when clicked"),
             ("hook", "AGENT EVENT [JSON]", "Forward an agent hook event (what agent configs run)"),
             ("mcp", "", "MCP server giving agents Mothership's tools (stdio)"),
@@ -101,6 +103,7 @@ enum Help {
         "send": """
             usage: mship send [--surface ID] [--submit] TEXT…
                    mship send [--surface ID] [--submit] -        (reads TEXT from stdin)
+                   mship send [--surface ID] --key down --key enter   (press keys, for TUIs)
 
             Pastes TEXT into a pane (bracketed paste, so newlines don't run commands one by one).
             --submit presses Enter afterwards. Defaults to this pane.
@@ -136,6 +139,18 @@ enum Help {
             Lists every agent session Mothership knows about, including ones running outside it
             (VS Code, iTerm, tmux): workspace, agent, state, directory and summary. Sessions that
             need you come first.
+            """,
+        "approve": """
+            usage: mship approve [ID] [--surface ID]
+
+            Allows a permission request an agent is waiting on (Claude Code and Codex hooks,
+            the OpenCode plugin). With no ID it answers the request in this pane, or the only
+            one waiting. `mship status` shows what's waiting.
+            """,
+        "deny": """
+            usage: mship deny [ID] [--surface ID] [--reason TEXT]
+
+            Denies a permission request. --reason is passed to the agent so it can adjust.
             """,
         "notify": """
             usage: mship notify TITLE [BODY…] [--surface ID]

@@ -302,6 +302,11 @@ public final class TerminalSurfaceController {
         case .tab: terminalView.sendKey(.tab)
         case .backspace: terminalView.sendKey(.backspace)
         case .interrupt: terminalView.sendKey(.c, modifiers: .ctrl)
+        case .up: terminalView.sendKey(.arrowUp)
+        case .down: terminalView.sendKey(.arrowDown)
+        case .left: terminalView.sendKey(.arrowLeft)
+        case .right: terminalView.sendKey(.arrowRight)
+        case .space: terminalView.sendKey(.space)
         }
     }
 
