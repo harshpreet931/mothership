@@ -162,6 +162,8 @@ extension AppModel {
                 // A run in the repo itself already worked on its branch.
                 if ownWorktree {
                     try await git.commitAll(in: value.worktreePath, message: task.title)
+                    // Record what's being kept: once merged, the branch has no diff left against the base.
+                    await refreshDiff(for: run)
                     try await git.merge(branch: value.branch, into: task.baseBranch, repository: task.repoRoot, message: "Merge \(value.branch): \(task.title)")
                 }
             case .pullRequest:
@@ -188,7 +190,7 @@ extension AppModel {
             tasks[t].runs[r].outcome = .kept
             saveTasks()
         }
-        await refreshDiff(for: run)
+        if mode != .mergeIntoBase { await refreshDiff(for: run) }
     }
 
     /// Removes the worktree and branch and closes the run's workspace.
