@@ -143,7 +143,11 @@ struct AgentsSettings: View {
 
     @ViewBuilder
     private func trailing(_ status: IntegrationStatus) -> some View {
-        if needsRepair(status) {
+        if status.unsupportedReason != nil, !status.installed {
+            Text("Unsupported")
+                .font(.system(size: 13))
+                .foregroundStyle(Sky.tertiary)
+        } else if needsRepair(status) {
             Button("Repair") { pending = IntegrationChange(kind: status.kind, install: true) }
                 .buttonStyle(SecondaryPillStyle(height: 30, foreground: Sky.attention))
         } else if status.installed {

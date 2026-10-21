@@ -211,12 +211,19 @@ public struct IntegrationStatus: Sendable, Codable, Equatable, Identifiable {
     public var installed: Bool
     /// Human-readable state, e.g. "Hooks installed (13 events)" or "Overwritten by another tool".
     public var detail: String
+    /// Why this agent can't be connected (e.g. "Gemini CLI 0.18.4 has no hooks (needs ≥ 0.26.0)");
+    /// nil when Connect can work.
+    public var unsupportedReason: String?
 
-    public init(kind: AgentKind, executablePath: String?, version: String?, installed: Bool, detail: String) {
+    public init(
+        kind: AgentKind, executablePath: String?, version: String?, installed: Bool, detail: String,
+        unsupportedReason: String? = nil
+    ) {
         self.kind = kind
         self.executablePath = executablePath
         self.version = version
         self.installed = installed
         self.detail = detail
+        self.unsupportedReason = unsupportedReason
     }
 }

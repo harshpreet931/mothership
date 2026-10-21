@@ -220,7 +220,8 @@ extension AppModel {
     /// First run: agents are on this Mac but none is connected yet. The card goes away by
     /// itself once one is.
     var needsOnboarding: Bool {
-        !integrations.contains(where: \.installed) && integrations.contains { $0.executablePath != nil }
+        !integrations.contains(where: \.installed)
+            && integrations.contains { $0.executablePath != nil && $0.unsupportedReason == nil }
     }
 
     // MARK: Ports

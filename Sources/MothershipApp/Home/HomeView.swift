@@ -160,8 +160,17 @@ struct OnboardingCard: View {
                             }
                         }
                         Spacer(minLength: 8)
-                        Button("Connect") { pending = IntegrationChange(kind: status.kind, install: true) }
-                            .buttonStyle(SecondaryPillStyle(height: 30))
+                        if let reason = status.unsupportedReason {
+                            Text(reason)
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(Sky.tertiary)
+                                .multilineTextAlignment(.trailing)
+                                .frame(maxWidth: 220, alignment: .trailing)
+                                .padding(.top, 4)
+                        } else {
+                            Button("Connect") { pending = IntegrationChange(kind: status.kind, install: true) }
+                                .buttonStyle(SecondaryPillStyle(height: 30))
+                        }
                     }
                     .padding(.vertical, 12)
                 }

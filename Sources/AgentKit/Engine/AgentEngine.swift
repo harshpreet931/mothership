@@ -758,14 +758,22 @@ public actor AgentEngine: AgentEngineProtocol {
                 let executable = locator.locate(adapter.executableNames)
                 let version = executable.flatMap(locator.version(of:))
                 guard let installer = adapter.integration() else {
-                    return IntegrationStatus(kind: adapter.kind, executablePath: executable, version: version, installed: false, detail: "No integration available")
+                    return IntegrationStatus(
+                        kind: adapter.kind, executablePath: executable, version: version, installed: false,
+                        detail: "No integration available", unsupportedReason: "No integration available yet"
+                    )
                 }
                 var context = base
                 context.agentVersion = version
                 let inspection = installer.inspect(context)
                 var detail = inspection.summary
                 if executable == nil { detail = "\(adapter.displayName) not found · " + detail }
-                return IntegrationStatus(kind: adapter.kind, executablePath: executable, version: version, installed: inspection.isInstalled, detail: detail)
+                var unsupportedReason: String?
+                if case .unsupported(let reason) = inspection.health { unsupportedReason = reason }
+                return IntegrationStatus(
+                    kind: adapter.kind, executablePath: executable, version: version, installed: inspection.isInstalled,
+                    detail: detail, unsupportedReason: unsupportedReason
+                )
             }
         }.value
         integrations = statuses
