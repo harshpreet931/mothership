@@ -110,10 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // walk both trees, and follow the daemon's pid when it changes.
             model.onPaneHostPIDsChanged = { [weak model] pids in
                 Task { await scanner.setRoots(pids) }
-                #if false  // AgentEngine.setPaneHostPIDs lands with the engine branch; connected at merge.
                 if let engine = model?.engine as? AgentEngine { Task { await engine.setPaneHostPIDs(pids) } }
-                #endif
-                _ = model
             }
             model.onPaneHostPIDsChanged?(model.paneHostPIDs)
             if let engine = model.engine as? AgentEngine {
