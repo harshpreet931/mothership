@@ -7,6 +7,8 @@ public struct SessionStore: Sendable {
     public private(set) var records: [AgentSessionKey: SessionRecord] = [:]
     /// pid → the session currently running in that process.
     public private(set) var pidIndex: [Int32: AgentSessionKey] = [:]
+    /// `attachOnly` facts for sessions not seen yet, applied when they appear.
+    private var pendingFacts: [AgentSessionKey: [AgentSignal]] = [:]
     public var lease: TimeInterval
 
     public init(lease: TimeInterval = AgentReducer.defaultLease) {
@@ -75,6 +77,15 @@ public struct SessionStore: Sendable {
 
     mutating func resolve(_ signal: AgentSignal) -> Resolution? {
         let hint = signal.hint
+        if hint.attachOnly {
+            guard let sessionID = hint.sessionID else { return nil }
+            let key = AgentSessionKey(kind: hint.kind, sessionID: sessionID)
+            if records[key] != nil { return Resolution(key: key, created: false, renamedFrom: nil, replaced: []) }
+            if pendingFacts.count >= 4096, pendingFacts[key] == nil { pendingFacts.removeAll() }
+            pendingFacts[key, default: []].append(signal)
+            if let count = pendingFacts[key]?.count, count > 8 { pendingFacts[key]?.removeFirst(count - 8) }
+            return nil
+        }
         if let sessionID = hint.sessionID {
             let key = AgentSessionKey(kind: hint.kind, sessionID: sessionID)
             var created = false
@@ -158,7 +169,12 @@ public struct SessionStore: Sendable {
             id: key, surface: hint.surface, pid: hint.pid, cwd: hint.cwd ?? "", state: .starting,
             transcriptPath: hint.transcriptPath, startedAt: date, lastActivity: date
         )
-        records[key] = SessionRecord(session: session, lastStateChange: date)
+        // No evidence yet: `lastStateChange` stays `.distantPast` so replayed history applies.
+        var record = SessionRecord(session: session)
+        for pending in pendingFacts.removeValue(forKey: key) ?? [] {
+            record = AgentReducer.reduce(record, pending, now: pending.timestamp, watched: true, lease: lease)
+        }
+        records[key] = record
     }
 
     mutating func rekey(_ old: AgentSessionKey, to new: AgentSessionKey) {
@@ -208,9 +224,22 @@ public struct SessionStore: Sendable {
             into.lastStateChange = from.lastStateChange
             into.stateTier = from.stateTier
             into.leaseUntil = from.leaseUntil
-            into.currentActivity = from.currentActivity ?? into.currentActivity
+            into.currentTool = from.currentTool ?? into.currentTool
+            into.currentTarget = from.currentTool != nil ? from.currentTarget : into.currentTarget
         }
-        into.firstPrompt = into.firstPrompt ?? from.firstPrompt
+        if let prompt = from.firstPrompt, let at = from.firstPromptAt, into.firstPromptAt.map({ at < $0 }) ?? true {
+            into.firstPrompt = prompt
+            into.firstPromptAt = at
+        }
+        if let prompt = from.titlePrompt, let at = from.titlePromptAt, into.titlePromptAt.map({ at < $0 }) ?? true {
+            into.titlePrompt = prompt
+            into.titlePromptAt = at
+        }
+        if from.nativeTitleRank > into.nativeTitleRank {
+            into.nativeTitle = from.nativeTitle
+            into.nativeTitleRank = from.nativeTitleRank
+            into.nativeTitleAt = from.nativeTitleAt
+        }
         into.lastHookAt = [into.lastHookAt, from.lastHookAt].compactMap { $0 }.max()
         into.hostAppHint = into.hostAppHint ?? from.hostAppHint
         into.session = session

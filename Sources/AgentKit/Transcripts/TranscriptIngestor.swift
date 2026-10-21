@@ -9,6 +9,7 @@ actor TranscriptIngestor {
         let adapter: any AgentAdapter
         let source: TranscriptSource
         let markers: [Data]?
+        let titleMarkers: [Data]
     }
 
     struct Tail {
@@ -21,6 +22,8 @@ actor TranscriptIngestor {
     let sources: [Source]
     /// Cap for the first read of an existing file; older history is skipped.
     let maxInitialBytes: UInt64
+    /// Bytes decoded from the start of a huge file (first prompt, early facts).
+    let headBytes: UInt64
     private var tails: [String: Tail] = [:]
     private var documents: [String: (modified: Date, size: Int)] = [:]
     private var documentStates: [String: TranscriptDecodeState] = [:]
@@ -30,27 +33,55 @@ actor TranscriptIngestor {
     private(set) var linesParsed = 0
     private(set) var linesSkipped = 0
 
-    init(adapters: [any AgentAdapter], home: URL, maxInitialBytes: UInt64 = 32 << 20, now: Date = Date()) {
+    init(adapters: [any AgentAdapter], home: URL, maxInitialBytes: UInt64 = 32 << 20, headBytes: UInt64 = 1 << 20, now: Date = Date()) {
         self.home = home
         self.maxInitialBytes = maxInitialBytes
+        self.headBytes = headBytes
         self.openCodeCursor = now.addingTimeInterval(-15 * 60)
         var sources: [Source] = []
         for adapter in adapters {
             for source in adapter.transcriptSources(home: home) {
-                sources.append(Source(adapter: adapter, source: source, markers: source.lineMarkers?.map { Data($0.utf8) }))
+                sources.append(
+                    Source(
+                        adapter: adapter, source: source, markers: source.lineMarkers?.map { Data($0.utf8) },
+                        titleMarkers: (source.titleMarkers ?? []).map { Data($0.utf8) }
+                    )
+                )
             }
         }
         self.sources = sources
     }
 
-    /// Directories to hand to FSEvents.
+    /// Directories to hand to FSEvents (nested roots collapsed into their parent).
     func watchRoots() -> [String] {
         var roots: [String] = []
         for entry in sources {
             let path = entry.source.format == .sqlite ? entry.source.root.deletingLastPathComponent().path : entry.source.root.path
             if !roots.contains(path) { roots.append(path) }
         }
-        return roots
+        return roots.filter { root in !roots.contains { $0 != root && root.hasPrefix($0 + "/") } }
+    }
+
+    /// Small index files to read at start (Codex thread names).
+    func eagerFiles() -> [String] {
+        sources.flatMap { $0.source.eagerFiles.map(\.path) }
+    }
+
+    /// The newest part of a transcript (default 256 KB), decoded with a throwaway state: the
+    /// current state and latest facts, fast, before the full history is read.
+    func peek(path: String, bytes: UInt64 = 256 << 10) -> [AgentSignal] {
+        guard tails[path] == nil, let entry = source(for: path), entry.source.format == .jsonl,
+            let size = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? NSNumber)?.uint64Value
+        else { return [] }
+        var tailer = JSONLTailer(path: path)
+        if size > bytes { tailer.seek(toLineAfter: size - bytes) }
+        var state = TranscriptDecodeState(isInitialLoad: true)
+        var signals: [AgentSignal] = []
+        for line in tailer.read(maxBytes: Int(bytes) + 4096).lines {
+            if let markers = entry.markers, !line.containsAny(markers) { continue }
+            signals += entry.adapter.decodeTranscript(.line(path: path, data: line), state: &state)
+        }
+        return signals
     }
 
     func source(for path: String) -> Source? {
@@ -101,11 +132,30 @@ actor TranscriptIngestor {
         } else {
             var tailer = JSONLTailer(path: path)
             var state = TranscriptDecodeState(isInitialLoad: true)
+            var prefix: [AgentSignal] = []
             if let size = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? NSNumber)?.uint64Value, size > maxInitialBytes {
-                tailer.seek(toLineAfter: size - maxInitialBytes)
+                // Huge file: decode the head (first prompt, early facts), pick title records out
+                // of the skipped middle without parsing it, then read the newest window.
+                let windowStart = size - maxInitialBytes
+                var head = JSONLTailer(path: path)
+                let headLines = head.read(maxBytes: Int(min(headBytes, windowStart))).lines
+                for line in headLines {
+                    if let markers = entry.markers, !line.containsAny(markers) { continue }
+                    prefix += entry.adapter.decodeTranscript(.line(path: path, data: line), state: &state)
+                }
+                if !entry.titleMarkers.isEmpty {
+                    for line in Self.lines(in: path, from: head.committedOffset, to: windowStart, containing: entry.titleMarkers) {
+                        prefix += entry.adapter.decodeTranscript(.line(path: path, data: line), state: &state)
+                    }
+                }
+                tailer.seek(toLineAfter: windowStart)
                 state.values["truncatedHistory"] = "1"
             }
             tail = Tail(tailer: tailer, state: state, lastRead: Date())
+            tails[path] = tail
+            if !prefix.isEmpty {
+                return prefix + readTail(path, entry: entry, fromStart: fromStart)
+            }
         }
         var signals: [AgentSignal] = []
         var rounds = 0
@@ -129,6 +179,54 @@ actor TranscriptIngestor {
         tail.lastRead = Date()
         tails[path] = tail
         return signals
+    }
+
+    /// Complete lines in `[from, to)` that contain any marker, found with `memmem` on raw bytes
+    /// (no JSON parsing), in file order.
+    static func lines(in path: String, from start: UInt64, to end: UInt64, containing markers: [Data], chunkSize: Int = 8 << 20) -> [Data] {
+        guard end > start, let handle = FileHandle(forReadingAtPath: path) else { return [] }
+        defer { try? handle.close() }
+        var found: [Data] = []
+        var offset = start
+        var carry = Data()
+        while offset < end {
+            try? handle.seek(toOffset: offset)
+            let wanted = Int(min(UInt64(chunkSize), end - offset))
+            guard let chunk = try? handle.read(upToCount: wanted), !chunk.isEmpty else { break }
+            offset += UInt64(chunk.count)
+            var buffer = carry
+            buffer.append(chunk)
+            let lastNewline = buffer.lastIndex(of: 0x0A)
+            let complete = lastNewline.map { buffer[buffer.startIndex..<$0] } ?? Data()
+            carry = lastNewline.map { Data(buffer[buffer.index(after: $0)...]) } ?? buffer
+            if carry.count > 4 << 20 { carry.removeAll() }
+            var ranges: [Range<Int>] = []
+            complete.withUnsafeBytes { raw in
+                guard let base = raw.baseAddress else { return }
+                for marker in markers {
+                    marker.withUnsafeBytes { needle in
+                        guard let needleBase = needle.baseAddress else { return }
+                        var position = 0
+                        while position < raw.count,
+                            let hit = memmem(base + position, raw.count - position, needleBase, needle.count)
+                        {
+                            let index = base.distance(to: hit)
+                            var lineStart = index
+                            while lineStart > 0, raw[lineStart - 1] != 0x0A { lineStart -= 1 }
+                            var lineEnd = index
+                            while lineEnd < raw.count, raw[lineEnd] != 0x0A { lineEnd += 1 }
+                            ranges.append(lineStart..<lineEnd)
+                            position = lineEnd + 1
+                        }
+                    }
+                }
+            }
+            let origin = complete.startIndex
+            for range in Set(ranges).sorted(by: { $0.lowerBound < $1.lowerBound }) {
+                found.append(Data(complete[(origin + range.lowerBound)..<(origin + range.upperBound)]))
+            }
+        }
+        return found
     }
 
     private func readDocument(_ path: String, entry: Source) -> [AgentSignal] {

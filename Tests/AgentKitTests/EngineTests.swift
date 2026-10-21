@@ -78,7 +78,7 @@ struct EngineTests {
         #expect(sessions[0].state == .working(tool: "Read"))
         #expect(sessions[0].surface == surface)
         #expect(sessions[0].pid == 4242)
-        #expect(sessions[0].summary == "Read: a.swift")
+        #expect(sessions[0].summary == "Reading a.swift")
     }
 
     @Test func watchedSurfaceGetsPassthroughWithoutHold() async throws {

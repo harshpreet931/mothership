@@ -26,21 +26,49 @@ public struct SessionHint: Sendable, Codable, Equatable {
     public var surface: SurfaceID?
     public var cwd: String?
     public var transcriptPath: String?
+    /// Facts about a session that may not exist yet (e.g. Codex's thread-name index): never
+    /// creates a session; kept and applied if the session shows up later.
+    public var attachOnly: Bool
 
-    public init(kind: AgentKind, sessionID: String? = nil, pid: Int32? = nil, surface: SurfaceID? = nil, cwd: String? = nil, transcriptPath: String? = nil) {
+    public init(
+        kind: AgentKind, sessionID: String? = nil, pid: Int32? = nil, surface: SurfaceID? = nil, cwd: String? = nil,
+        transcriptPath: String? = nil, attachOnly: Bool = false
+    ) {
         self.kind = kind
         self.sessionID = sessionID?.isEmpty == true ? nil : sessionID
         self.pid = pid
         self.surface = surface
         self.cwd = cwd?.isEmpty == true ? nil : cwd
         self.transcriptPath = transcriptPath?.isEmpty == true ? nil : transcriptPath
+        self.attachOnly = attachOnly
     }
+}
+
+extension AgentState {
+    /// Working or blocked on input: a turn is in progress.
+    var isBusy: Bool {
+        switch self {
+        case .working, .needsInput: true
+        default: false
+        }
+    }
+}
+
+/// Who named a session.
+public enum TitleSource: String, Sendable, Codable {
+    /// AI-generated or agent-derived (Claude ai-title, Codex thread name, OpenCode title).
+    case agent
+    /// Set by the user (Claude custom title / rename). Beats agent titles.
+    case user
 }
 
 /// Facts that don't change state by themselves.
 public struct SessionMetadata: Sendable, Codable, Equatable {
     /// Title from the agent itself (custom/AI title). Overrides a prompt-derived title.
     public var title: String?
+    public var titleSource: TitleSource?
+    /// The session's first user prompt (title fallback), when the source knows it.
+    public var firstUserPrompt: String?
     public var model: String?
     public var cwd: String?
     public var branch: String?
@@ -59,9 +87,11 @@ public struct SessionMetadata: Sendable, Codable, Equatable {
         title: String? = nil, model: String? = nil, cwd: String? = nil, branch: String? = nil,
         transcriptPath: String? = nil, lastUserPrompt: String? = nil, lastAssistantMessage: String? = nil,
         contextTokens: Int? = nil, contextWindow: Int? = nil, reportedCostUSD: Double? = nil,
-        hostApp: String? = nil, startedAt: Date? = nil
+        hostApp: String? = nil, startedAt: Date? = nil, titleSource: TitleSource? = nil, firstUserPrompt: String? = nil
     ) {
         self.title = title
+        self.titleSource = titleSource
+        self.firstUserPrompt = firstUserPrompt
         self.model = model
         self.cwd = cwd
         self.branch = branch

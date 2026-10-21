@@ -50,6 +50,7 @@ struct TraceStep: Decodable {
     var expectActivity: String?
     var expectLastMessage: String?
     var expectTokens: Int?
+    var expectPrompt: String?
 }
 
 enum Trace {
@@ -163,7 +164,7 @@ struct ReducerTraceTests {
                 #expect(store.records.count == count, "\(location): session count")
             }
             guard step.expect != nil || step.expectUnread != nil || step.expectPID != nil || step.expectTitle != nil
-                || step.expectActivity != nil || step.expectLastMessage != nil || step.expectTokens != nil
+                || step.expectActivity != nil || step.expectLastMessage != nil || step.expectTokens != nil || step.expectPrompt != nil
             else { continue }
             let resolvedKey = try #require(key, "\(location): no session key")
             let record = try #require(store[resolvedKey], "\(location): no session \(resolvedKey)")
@@ -179,6 +180,7 @@ struct ReducerTraceTests {
             if let title = step.expectTitle { #expect(record.session.title == title, "\(location): title") }
             if let activity = step.expectActivity { #expect(record.currentActivity == activity, "\(location): activity") }
             if let message = step.expectLastMessage { #expect(record.session.lastAssistantMessage == message, "\(location): last message") }
+            if let prompt = step.expectPrompt { #expect(record.session.lastUserPrompt == prompt, "\(location): last prompt") }
             if let tokens = step.expectTokens {
                 let usage = record.session.usage
                 #expect(usage.inputTokens + usage.outputTokens + usage.cacheReadTokens + usage.cacheWriteTokens == tokens, "\(location): tokens")
@@ -187,7 +189,7 @@ struct ReducerTraceTests {
     }
 
     @Test func everyTraceFileIsDiscovered() {
-        #expect(Trace.names().count >= 6)
+        #expect(Trace.names().count >= 8)
     }
 }
 

@@ -1,0 +1,12 @@
+# Cold start, no hooks: the scan sees the process "now", but the status file and transcript
+# evidence are older. Weak process-tier evidence must not make that history stale. Then the
+# full history replays out of order (older lines after the peeked tail): state and latest facts
+# keep the newest evidence, while the earliest prompt becomes the title.
+{"at":100,"tier":"process","kind":"claude","session":"live-1","pid":30,"event":"processSeen","expect":"idle","expectCount":1}
+{"at":100,"ts":40,"tier":"transcript","kind":"claude","session":"live-1","event":"observed","state":"working","expect":"working"}
+{"at":100,"ts":90,"tier":"transcript","kind":"claude","session":"live-1","event":"prompt","text":"Run the test suite","expect":"working","expectPrompt":"Run the test suite"}
+{"at":100,"ts":95,"tier":"transcript","kind":"claude","session":"live-1","event":"toolStart","tool":"Bash","summary":"swift test","expect":"working:Bash"}
+{"at":102,"ts":20,"tier":"transcript","kind":"claude","session":"live-1","event":"prompt","text":"'/Users/someone/Desktop/Screenshot 1.png' set up the project","expect":"working:Bash","expectPrompt":"Run the test suite","expectTitle":"Set up the project"}
+{"at":102,"ts":60,"tier":"transcript","kind":"claude","session":"live-1","event":"stop","text":"Old turn done.","expect":"working:Bash"}
+{"at":102,"ts":95,"tier":"transcript","kind":"claude","session":"live-1","event":"toolStart","tool":"Bash","summary":"swift test","expect":"working:Bash","expectActivity":"Bash: swift test"}
+{"at":110,"ts":109,"tier":"transcript","kind":"claude","session":"live-1","event":"stop","text":"All tests pass.","expect":"idle","expectLastMessage":"All tests pass."}
