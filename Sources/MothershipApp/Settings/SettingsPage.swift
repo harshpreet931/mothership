@@ -15,11 +15,18 @@ struct SettingsPage: View {
                     Text("Settings")
                         .font(Sky.Font.displayL)
                         .foregroundStyle(Sky.ink)
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 2) {
+                        MothershipLockup(fontSize: 17)
+                        Text("v\(ShipInfo.version)")
+                            .font(Sky.Font.meta)
+                            .foregroundStyle(Sky.tertiary)
+                    }
                 }
                 SegmentedPill(
                     items: SettingsTab.allCases.map { ($0, $0.title) },
                     selection: Binding(get: { model.settingsTab }, set: { model.settingsTab = $0 }),
-                    height: 44, segmentWidth: 150
+                    height: 44, segmentWidth: (640 - 6) / 4
                 )
                 Group {
                     switch model.settingsTab {

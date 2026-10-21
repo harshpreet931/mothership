@@ -25,9 +25,7 @@ struct TopBar: View {
             } else {
                 HStack(spacing: 8) {
                     Color.clear.frame(width: trafficLightsWidth, height: 1)
-                    CircleButton(symbol: "house", size: 32, label: "Home (⌘0)", active: model.screen == .home) {
-                        model.toggleHome()
-                    }
+                    HomeMarkButton(active: model.screen == .home) { model.toggleHome() }
                     CircleButton(symbol: "sidebar.left", size: 32, label: "Toggle Sidebar (⌘B)") {
                         router.perform(.toggleSidebar)
                     }
@@ -48,6 +46,33 @@ struct TopBar: View {
         }
         .padding(.horizontal, Sky.gutter)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// The Home circle carries the Arch M mark instead of a house glyph.
+struct HomeMarkButton: View {
+    let active: Bool
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            MothershipMark(variant: .mono(active ? Sky.onInk : Sky.ink.opacity(0.85)), size: 22)
+                .frame(width: 32, height: 32)
+                .background {
+                    if active {
+                        Circle().fill(Sky.ink)
+                    } else {
+                        Circle().fill(Color.clear).glass(Circle())
+                            .overlay(Circle().fill(Sky.ink.opacity(hovering ? 0.05 : 0)))
+                    }
+                }
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in withAnimation(Sky.hover) { self.hovering = hovering } }
+        .help("Home (⌘0)")
+        .accessibilityLabel("Home")
     }
 }
 

@@ -149,6 +149,23 @@ final class CommandRouter: NSObject, NSMenuItemValidation {
         perform(command)
     }
 
+    /// The standard About panel with the Arch M icon (rendered when running unbundled).
+    @objc func showAbout(_: Any?) {
+        let bundledIcon = Bundle.main.object(forInfoDictionaryKey: "CFBundleIconFile") != nil
+        var options: [NSApplication.AboutPanelOptionKey: Any] = [
+            .applicationName: "Mothership",
+            .applicationVersion: ShipInfo.version,
+            .credits: NSAttributedString(
+                string: "Mission control for your agents.",
+                attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor]
+            ),
+        ]
+        if let icon = bundledIcon ? NSApp.applicationIconImage : AppIconTile.image(size: 256) {
+            options[.applicationIcon] = icon
+        }
+        NSApp.orderFrontStandardAboutPanel(options: options)
+    }
+
     @objc func selectWorkspaceByTag(_ sender: Any?) {
         guard let item = sender as? NSMenuItem else { return }
         model.selectWorkspace(at: item.tag)

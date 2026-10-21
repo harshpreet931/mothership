@@ -12,6 +12,8 @@ struct AttentionStack: View {
             if !model.toasts.isEmpty {
                 FannedStack(items: model.toasts) { toast in
                     ToastCard(model: model, toast: toast)
+                } plate: {
+                    Color.clear.glassPanel(radius: 20, dense: true)
                 }
                 .onHover { hovering = $0 }
                 .transition(.move(edge: .top).combined(with: .opacity))
@@ -72,7 +74,6 @@ struct ToastCard: View {
     private var kindColor: Color {
         switch toast.event.kind {
         case .failed: Sky.danger
-        case .needsInput: Sky.attention
         default: Sky.ink.opacity(0.82)
         }
     }

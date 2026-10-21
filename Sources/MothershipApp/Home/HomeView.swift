@@ -21,13 +21,17 @@ struct HomeView: View {
 
                 ScrollView(.vertical) {
                     VStack(alignment: .leading, spacing: 22) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(model.greeting(at: now ?? Date()))
-                                .font(Sky.Font.serifL)
-                                .foregroundStyle(Sky.ink)
-                            Text(model.statusSentence)
-                                .font(.system(size: 14))
-                                .foregroundStyle(Sky.secondary)
+                        HStack(alignment: .center, spacing: 16) {
+                            AnimatedMothershipMark(variant: .sky, size: 64)
+                                .padding(.horizontal, -64 * 18 / 120)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(model.greeting(at: now ?? Date()))
+                                    .font(Sky.Font.serifL)
+                                    .foregroundStyle(Sky.ink)
+                                Text(model.statusSentence)
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(Sky.secondary)
+                            }
                         }
                         .padding(.top, 28)
                         HomePanels(model: model, width: min(760, geometry.size.width * 0.66 - 80))
@@ -154,6 +158,8 @@ struct NeedsYouPanel: View {
             } else {
                 FannedStack(items: items) { session in
                     AttentionCard(model: model, session: session)
+                } plate: {
+                    Color.clear.contentCard(radius: 18)
                 }
             }
         }
@@ -332,7 +338,7 @@ struct ElsewherePanel: View {
                     .foregroundStyle(Sky.secondary)
             } else {
                 VStack(spacing: 0) {
-                    ForEach(Array(external.enumerated()), id: \.element.id) { index, session in
+                    ForEach(Array(external.prefix(5).enumerated()), id: \.element.id) { index, session in
                         if index > 0 { Rectangle().fill(Sky.hairline).frame(height: 1) }
                         HStack(spacing: 10) {
                             AgentStatusGlyph(kind: session.kind, state: session.state, unread: session.unread, size: 13)
@@ -354,6 +360,11 @@ struct ElsewherePanel: View {
                         .padding(.vertical, 8)
                         .contentShape(Rectangle())
                         .onTapGesture { HostApp.reveal(session.hostApp) }
+                    }
+                    if external.count > 5 {
+                        Button("All \(external.count) in Fleet") { model.show(.fleet) }
+                            .buttonStyle(GhostPillStyle(height: 26))
+                            .padding(.top, 6)
                     }
                 }
             }

@@ -7,7 +7,7 @@ struct AssistantBubble: View {
     var lineLimit: Int? = 4
 
     var body: some View {
-        Text(text)
+        Text(Self.inlineMarkdown(text))
             .font(Sky.Font.body)
             .foregroundStyle(Sky.ink)
             .lineLimit(lineLimit)
@@ -16,6 +16,12 @@ struct AssistantBubble: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Sky.bubble))
+    }
+
+    /// Agents answer in Markdown; render **bold**, *italic* and `code` inline, keep the rest.
+    static func inlineMarkdown(_ text: String) -> AttributedString {
+        let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
     }
 }
 
@@ -61,33 +67,45 @@ struct BubbleTail: View {
 }
 
 /// Fanned stack: the top card in full, up to two more peeking behind; hover fans them out.
-struct FannedStack<Item: Identifiable, Card: View>: View {
+struct FannedStack<Item: Identifiable, Card: View, Plate: View>: View {
     let items: [Item]
     let card: (Item) -> Card
+    /// What peeks out behind the top card at rest: just the card's surface.
+    let plate: () -> Plate
     @State private var fanned = false
 
     var body: some View {
         let visible = Array(items.prefix(3))
-        let step: CGFloat = fanned ? 16 : 8
-        ZStack(alignment: .top) {
-            ForEach(Array(visible.enumerated().reversed()), id: \.element.id) { index, item in
-                card(item)
-                    // Back cards shrink toward their bottom edge so a sliver peeks below.
-                    .scaleEffect(1 - CGFloat(index) * 0.045, anchor: .bottom)
-                    .rotationEffect(.degrees(rotation(for: index)), anchor: .center)
-                    .offset(x: fanned ? CGFloat(index) * 6 : 0, y: CGFloat(index) * step)
-                    .allowsHitTesting(index == 0 || fanned)
-                    .zIndex(Double(-index))
+        Group {
+            if fanned, visible.count > 1 {
+                // Hover fans the stack out into every card, newest on top.
+                VStack(spacing: 8) {
+                    ForEach(Array(visible.enumerated()), id: \.element.id) { index, item in
+                        card(item)
+                            .rotationEffect(.degrees(index == 0 ? 0 : (index.isMultiple(of: 2) ? 0.8 : -0.8)))
+                            .transition(.asymmetric(insertion: .offset(y: -12).combined(with: .opacity), removal: .opacity))
+                    }
+                }
+            } else if let top = visible.first {
+                card(top)
+                    // Plates take the top card's exact size (a background is proposed its
+                    // owner's frame), shrink toward their bottom edge and peek out below.
+                    .background {
+                        ZStack {
+                            ForEach(Array(visible.indices.dropFirst().reversed()), id: \.self) { index in
+                                plate()
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .scaleEffect(1 - CGFloat(index) * 0.05, anchor: .bottom)
+                                    .rotationEffect(.degrees(index.isMultiple(of: 2) ? 1.6 : -1.6), anchor: .center)
+                                    .offset(y: CGFloat(index) * 8)
+                                    .opacity(1 - Double(index) * 0.18)
+                            }
+                        }
+                    }
+                    .padding(.bottom, CGFloat(max(visible.count - 1, 0)) * 8)
             }
         }
-        .padding(.bottom, CGFloat(max(visible.count - 1, 0)) * step)
         .onHover { hovering in withAnimationIfAllowed { fanned = hovering } }
-    }
-
-    private func rotation(for index: Int) -> Double {
-        guard index > 0 else { return 0 }
-        let sign: Double = index.isMultiple(of: 2) ? 1 : -1
-        return sign * (fanned ? 4 : 1.2) * Double(index)
     }
 }
 

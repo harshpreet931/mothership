@@ -45,7 +45,8 @@ enum MainMenu {
 
     private static func appMenu(router: CommandRouter) -> NSMenu {
         let menu = NSMenu(title: "Mothership")
-        menu.addItem(withTitle: "About Mothership", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        let about = menu.addItem(withTitle: "About Mothership", action: #selector(CommandRouter.showAbout(_:)), keyEquivalent: "")
+        about.target = router
         menu.addItem(.separator())
         menu.addItem(command(.settings, router: router))
         menu.addItem(.separator())

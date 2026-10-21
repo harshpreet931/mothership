@@ -1,5 +1,6 @@
 import AppKit
 import Observation
+import ShipModel
 import SwiftUI
 
 /// While a debug snapshot renders, glass drops its material (which `cacheDisplay` draws as
@@ -33,6 +34,16 @@ enum DebugSnapshot {
             case "fleet": model.show(.fleet)
             case "palette": model.isPalettePresented = true
             case "settings": model.openSettings(parts.count > 1 ? SettingsTab(rawValue: parts[1]) : .agents)
+            case "toasts":
+                // Stand-in attention events from whatever sessions exist, to check the stack.
+                for session in model.sessions.filter({ $0.needsYou || $0.state.isError }).prefix(3).reversed() {
+                    let kind: AttentionEvent.Kind = session.pendingPermission.map { .permission($0) } ?? (session.state.isError ? .failed : .needsInput)
+                    model.enqueueToast(AttentionEvent(
+                        kind: kind, session: session.id, surface: session.surface,
+                        title: "\(session.kind.shortName) · \(session.title ?? "Session")",
+                        body: session.lastAssistantMessage ?? session.displayLine ?? "", shouldNotify: true
+                    ))
+                }
             default: break
             }
         }

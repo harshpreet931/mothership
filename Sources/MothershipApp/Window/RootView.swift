@@ -16,7 +16,7 @@ final class RootView: NSView {
     private let sidebarHost: NSHostingView<SidebarView>
     private let composerHost: NSHostingView<ComposerView>
     private let topBarHost: NSHostingView<TopBar>
-    private let toastHost: NSHostingView<ToastLayer>
+    private let toastHost: SizingHostingView<ToastLayer>
     private(set) var paletteHost: NSHostingView<CommandPaletteView>?
     private var observation: ObservationLoop?
     private var keyMonitor: Any?
@@ -40,7 +40,7 @@ final class RootView: NSView {
         sidebarHost = Self.host(SidebarView(model: model))
         composerHost = Self.host(ComposerView(model: model))
         topBarHost = Self.host(TopBar(model: model, router: router))
-        toastHost = Self.host(ToastLayer(model: model, hover: toastHover))
+        toastHost = SizingHostingView(rootView: ToastLayer(model: model, hover: toastHover))
         super.init(frame: NSRect(x: 0, y: 0, width: 1280, height: 820))
         wantsLayer = true
 
@@ -52,6 +52,9 @@ final class RootView: NSView {
             addSubview(view)
         }
         observation = ObservationLoop { [weak self] in self?.sync() }
+        toastHost.onSizeChange = { [weak self] in
+            DispatchQueue.main.async { self?.layoutToasts() }
+        }
         installKeyMonitor()
     }
 
@@ -115,12 +118,7 @@ final class RootView: NSView {
         skyHost.frame = bounds
         desktopBlur.frame = bounds
         topBarHost.frame = NSRect(x: 0, y: 0, width: bounds.width, height: Sky.topBarHeight)
-        // Sized to the stack (plus room to fan) so it never blocks panes beneath it.
-        let toastHeight = toastHost.fittingSize.height
-        toastHost.frame = NSRect(
-            x: bounds.width - Sky.gutter - 344, y: Sky.topBarHeight + 2,
-            width: 344, height: min(max(toastHeight, 1) + 36, bounds.height - Sky.topBarHeight - 20)
-        )
+        layoutToasts()
         paletteHost?.frame = bounds
         let targets: [(NSView, NSRect)] = [
             (canvas, frames.content), (screenHost, frames.screen), (sidebarHost, frames.sidebar), (composerHost, frames.composer),
@@ -136,6 +134,13 @@ final class RootView: NSView {
             for (view, frame) in targets { view.frame = frame }
         }
         updateTrackingAreas()
+    }
+
+    /// Exactly the stack's size (it grows while fanned), so it never blocks panes beneath it.
+    private func layoutToasts() {
+        let size = toastHost.intrinsicContentSize
+        let height = min(max(size.height, 1), bounds.height - Sky.topBarHeight - 20)
+        toastHost.frame = NSRect(x: bounds.width - Sky.gutter - 344, y: Sky.topBarHeight + 4, width: 344, height: height)
     }
 
     private func animateLayout() {
@@ -291,6 +296,8 @@ struct EmptyStateView: View {
     let model: AppModel
     var body: some View {
         VStack(spacing: 16) {
+            MothershipMark(variant: .sky, size: 72)
+                .padding(.bottom, -8)
             Text("Nothing running.")
                 .font(Sky.Font.serifL)
                 .foregroundStyle(Sky.ink)
@@ -316,6 +323,25 @@ struct ToastLayer: View {
     let hover: ToastHover
     var body: some View {
         AttentionStack(model: model, hovering: Binding(get: { hover.hovering }, set: { hover.hovering = $0 }))
-            .frame(maxHeight: .infinity, alignment: .top)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Reports SwiftUI size changes so its owner can re-frame it to the content.
+final class SizingHostingView<Content: View>: NSHostingView<Content> {
+    var onSizeChange: (() -> Void)?
+
+    required init(rootView: Content) {
+        super.init(rootView: rootView)
+        sizingOptions = [.intrinsicContentSize]
+        safeAreaRegions = []
+    }
+
+    @available(*, unavailable)
+    @MainActor @preconcurrency required init?(coder _: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func invalidateIntrinsicContentSize() {
+        super.invalidateIntrinsicContentSize()
+        onSizeChange?()
     }
 }
