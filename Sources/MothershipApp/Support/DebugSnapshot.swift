@@ -34,6 +34,24 @@ enum DebugSnapshot {
             case "fleet": model.show(.fleet)
             case "palette": model.isPalettePresented = true
             case "composer": model.openComposer()
+            case "consent":
+                // The consent sheet as its own PNG beside the snapshot (sheets are separate
+                // windows). Use with MOTHERSHIP_DEMO so no real config is read into it.
+                guard let path = ProcessInfo.processInfo.environment["MOTHERSHIP_SNAPSHOT"] else { break }
+                let kind = parts.count > 1 ? AgentKind(rawValue: parts[1]) : .opencode
+                let sheet = IntegrationConsentSheet(model: model, change: IntegrationChange(kind: kind, install: true)) {}
+                    .background(Color(nsColor: .windowBackgroundColor))
+                let host = NSHostingView(rootView: sheet)
+                host.appearance = root.window?.appearance
+                host.frame = NSRect(origin: .zero, size: host.fittingSize)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    host.frame = NSRect(origin: .zero, size: host.fittingSize)
+                    host.layoutSubtreeIfNeeded()
+                    guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return }
+                    host.cacheDisplay(in: host.bounds, to: rep)
+                    let url = URL(fileURLWithPath: (path as NSString).deletingPathExtension + "-consent.png")
+                    if let png = rep.representation(using: .png, properties: [:]) { try? png.write(to: url) }
+                }
             case "settings": model.openSettings(parts.count > 1 ? SettingsTab(rawValue: parts[1]) : .agents)
             case "toasts":
                 // Stand-in attention events from whatever sessions exist, plus a finished
@@ -145,10 +163,12 @@ enum DebugSnapshot {
                     if let image = terminal.snapshotImage() {
                         NSGraphicsContext.saveGraphicsState()
                         path.addClip()
-                        image.draw(in: cg(terminal.view.convert(terminal.view.bounds, to: root)))
+                        let terminalRect = cg(terminal.view.convert(terminal.view.bounds, to: root))
+                        image.draw(in: terminalRect)
                         if workspace.visibleSurfaceIDs.count > 1, id != workspace.focusedSurface?.id {
+                            // The cached card already carries its dim; only the terminal's own frame needs it.
                             NSColor.black.withAlphaComponent(0.14).setFill()
-                            rect.fill(using: .sourceOver)
+                            terminalRect.fill(using: .sourceOver)
                         }
                         NSGraphicsContext.restoreGraphicsState()
                     }

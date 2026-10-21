@@ -18,10 +18,8 @@ struct TopBar: View {
                 .simultaneousGesture(TapGesture(count: 2).onEnded { NSApp.keyWindow?.performZoom(nil) })
 
             if model.screen == .settings {
-                HStack {
-                    Spacer()
-                    CircleButton(symbol: "xmark", size: 32, label: "Close Settings (Esc)") { model.show(.workspaces) }
-                }
+                // Settings backs out with its own ‹ circle (or Esc); nothing else up here.
+                EmptyView()
             } else {
                 HStack(spacing: 8) {
                     Color.clear.frame(width: trafficLightsWidth, height: 1)

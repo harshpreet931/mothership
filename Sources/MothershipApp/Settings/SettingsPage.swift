@@ -44,6 +44,7 @@ struct SettingsPage: View {
             .frame(maxWidth: .infinity)
         }
         .scrollIndicators(.never)
+        .bottomFade()
         .animation(Sky.spring, value: model.settingsTab)
     }
 }
@@ -209,14 +210,14 @@ struct AppearanceSettings: View {
                         Image(systemName: "sparkles").font(.system(size: 16)).frame(width: 24).foregroundStyle(Sky.ink.opacity(0.75))
                     } trailing: {
                         Toggle("", isOn: Binding(get: { model.skyClock.animates }, set: { model.skyClock.animates = $0 }))
-                            .toggleStyle(.switch).labelsHidden().tint(Sky.accentToggle)
+                            .toggleStyle(SkySwitchStyle())
                     }
                     .padding(.horizontal, 22)
                     GlassListRow(title: "Use my location", subtitle: model.skyClock.locationNote ?? "Places the sun exactly. Otherwise it's guessed from your time zone.", showsDivider: false) {
                         Image(systemName: "location").font(.system(size: 16)).frame(width: 24).foregroundStyle(Sky.ink.opacity(0.75))
                     } trailing: {
                         Toggle("", isOn: Binding(get: { model.skyClock.usesLocation }, set: { model.skyClock.usesLocation = $0 }))
-                            .toggleStyle(.switch).labelsHidden().tint(Sky.accentToggle)
+                            .toggleStyle(SkySwitchStyle())
                     }
                     .padding(.horizontal, 22)
                 }
@@ -268,13 +269,13 @@ struct AppearanceSettings: View {
                     Image(systemName: "cloud").font(.system(size: 16)).frame(width: 24).foregroundStyle(Sky.ink.opacity(0.75))
                 } trailing: {
                     Toggle("", isOn: Binding(get: { model.tintWithSky }, set: { model.tintWithSky = $0 }))
-                        .toggleStyle(.switch).labelsHidden().tint(Sky.accentToggle)
+                        .toggleStyle(SkySwitchStyle())
                 }
                 GlassListRow(title: "Composer pill", subtitle: "A slim pill at the bottom; ⌘L opens the composer either way", showsDivider: false) {
                     Image(systemName: "text.bubble").font(.system(size: 16)).frame(width: 24).foregroundStyle(Sky.ink.opacity(0.75))
                 } trailing: {
                     Toggle("", isOn: Binding(get: { model.isComposerVisible }, set: { model.isComposerVisible = $0 }))
-                        .toggleStyle(.switch).labelsHidden().tint(Sky.accentToggle)
+                        .toggleStyle(SkySwitchStyle())
                 }
             }
         }
@@ -394,7 +395,7 @@ struct NotificationSettings: View {
         GlassListRow(title: title, subtitle: subtitle, showsDivider: divider) {
             Image(systemName: symbol).font(.system(size: 15)).frame(width: 24).foregroundStyle(Sky.ink.opacity(0.75))
         } trailing: {
-            Toggle("", isOn: binding).toggleStyle(.switch).labelsHidden().tint(Sky.accentToggle)
+            Toggle("", isOn: binding).toggleStyle(SkySwitchStyle())
         }
         .opacity(binding.wrappedValue || title == "Notifications" ? 1 : 0.85)
     }

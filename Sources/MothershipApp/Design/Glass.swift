@@ -52,9 +52,29 @@ extension View {
         glass(Capsule(style: .continuous))
     }
 
+    /// Opaque overlay surface (palette, menus over terminal text): `bubble` with a
+    /// hairline and a soft shadow, so nothing busy shows through.
+    func solidPanel(radius: CGFloat = Sky.radiusPanel) -> some View {
+        modifier(SolidPanel(radius: radius))
+    }
+
     /// Opaque content card (`bubble`), with the Day-only elevation.
     func contentCard(radius: CGFloat = Sky.radiusPane) -> some View {
         modifier(ContentCard(radius: radius))
+    }
+}
+
+struct SolidPanel: ViewModifier {
+    let radius: CGFloat
+    @Environment(\.colorScheme) private var scheme
+
+    func body(content: Content) -> some View {
+        content.background {
+            let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+            shape.fill(Sky.bubble)
+                .overlay(shape.strokeBorder(Sky.cardStroke, lineWidth: 1))
+                .shadow(color: .black.opacity(scheme == .dark ? 0.4 : 0.16), radius: 24, y: 12)
+        }
     }
 }
 
@@ -206,6 +226,56 @@ struct SegmentedPill<Value: Hashable>: View {
         }
         .padding(3)
         .glassCapsule()
+    }
+}
+
+/// Sky's switch: a filled track when on (ink by day, calm blue at night), a recessed one
+/// when off, and a white knob either way. Drawn by SwiftUI so on and off never look alike.
+struct SkySwitchStyle: ToggleStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        let on = configuration.isOn
+        Button {
+            withAnimation(.spring(response: 0.22, dampingFraction: 0.9)) { configuration.isOn.toggle() }
+        } label: {
+            Capsule(style: .continuous)
+                .fill(on ? Sky.accentToggle : Sky.ink.opacity(0.14))
+                .frame(width: 38, height: 22)
+                .overlay(alignment: on ? .trailing : .leading) {
+                    Circle()
+                        .fill(.white)
+                        .shadow(color: .black.opacity(0.22), radius: 1.5, y: 1)
+                        .padding(2)
+                }
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .opacity(isEnabled ? 1 : 0.45)
+        .accessibilityElement()
+        .accessibilityAddTraits(.isToggle)
+        .accessibilityValue(on ? "On" : "Off")
+    }
+}
+
+/// Fades a scroll view's content out over its bottom edge instead of cutting it off.
+struct BottomFade: ViewModifier {
+    var height: CGFloat = 28
+
+    func body(content: Content) -> some View {
+        content.mask {
+            VStack(spacing: 0) {
+                Color.black
+                LinearGradient(colors: [.black, .black.opacity(0)], startPoint: .top, endPoint: .bottom)
+                    .frame(height: height)
+            }
+        }
+    }
+}
+
+extension View {
+    func bottomFade(_ height: CGFloat = 28) -> some View {
+        modifier(BottomFade(height: height))
     }
 }
 

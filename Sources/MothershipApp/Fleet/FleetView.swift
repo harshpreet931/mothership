@@ -91,10 +91,12 @@ struct FleetGrid: View {
                         .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                .padding(.bottom, Self.spacing)
+                // The last row scrolls clear of the composer pill.
+                .padding(.bottom, 48)
                 .transaction { $0.animation = nil }
             }
             .scrollIndicators(.never)
+            .bottomFade()
         }
     }
 }

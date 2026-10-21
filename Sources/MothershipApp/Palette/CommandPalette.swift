@@ -187,6 +187,7 @@ struct CommandPaletteView: View {
                 .frame(maxHeight: 400)
                 .fixedSize(horizontal: false, vertical: true)
                 .scrollIndicators(.never)
+                .bottomFade(results.count > 8 ? 22 : 0)
                 .onChange(of: selection) {
                     guard results.indices.contains(selection) else { return }
                     withAnimation(.easeOut(duration: 0.1)) { proxy.scrollTo(results[selection].id) }
@@ -202,7 +203,7 @@ struct CommandPaletteView: View {
             .frame(height: 36)
         }
         .frame(width: 640)
-        .glassPanel(dense: true)
+        .solidPanel()
     }
 
     private func actionsPanel(_ item: PaletteItem) -> some View {
@@ -243,7 +244,7 @@ struct CommandPaletteView: View {
         .padding(.horizontal, 6)
         .padding(.bottom, 8)
         .frame(width: 250)
-        .glassPanel(dense: true)
+        .solidPanel()
     }
 
     private func hint(_ key: String, _ label: String) -> some View {

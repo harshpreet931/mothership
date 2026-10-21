@@ -42,9 +42,10 @@ struct HomeView: View {
                         HomePanels(model: model, width: min(760, geometry.size.width * 0.66 - 80))
                     }
                     .padding(.trailing, 40)
-                    .padding(.bottom, 24)
+                    .padding(.bottom, 40)
                 }
                 .scrollIndicators(.never)
+                .bottomFade()
             }
         }
     }
