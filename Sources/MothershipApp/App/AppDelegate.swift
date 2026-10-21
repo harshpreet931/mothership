@@ -63,8 +63,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         if isDemo {
             DemoSeed.populate(model)
-        } else if let saved {
-            model.restore(saved)
+        } else {
+            // Before restoring: saved panes reattach to their live mshipd sessions.
+            model.startSessionHost()
+            if let saved { model.restore(saved) }
         }
         if model.workspaces.isEmpty {
             model.createWorkspace(cwd: FileManager.default.homeDirectoryForCurrentUser.path)
@@ -84,6 +86,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // where this build's own shells can't open sockets.
             let scanner = PortScanner(rootPID: environment["MOTHERSHIP_PORTS_ROOT_PID"].flatMap(Int32.init) ?? getpid())
             model.portsProvider = { await scanner.scan() }
+            // Panes descend from mshipd as well as the app: ports and the engine's pane scans
+            // walk both trees, and follow the daemon's pid when it changes.
+            model.onPaneHostPIDsChanged = { [weak model] pids in
+                Task { await scanner.setRoots(pids) }
+                #if false  // AgentEngine.setPaneHostPIDs lands with the engine branch; connected at merge.
+                if let engine = model?.engine as? AgentEngine { Task { await engine.setPaneHostPIDs(pids) } }
+                #endif
+                _ = model
+            }
+            model.onPaneHostPIDsChanged?(model.paneHostPIDs)
             if let engine = model.engine as? AgentEngine {
                 model.plannedIntegrationChange = { kind in (try? await engine.plannedIntegrationContents(kind)) ?? nil }
             }

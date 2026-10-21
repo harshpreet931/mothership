@@ -3,8 +3,9 @@ import ShipModel
 import SystemProbe
 
 /// Finds dev servers started from Mothership's shells: TCP sockets in LISTEN state owned by
-/// any process descending from this app, attributed to a workspace by the nearest
-/// ancestor (or the process itself) whose environment carries `MOTHERSHIP_WORKSPACE_ID`.
+/// any process descending from a pane host (this app, and `mshipd`, which owns persistent
+/// panes), attributed to a workspace by the nearest ancestor (or the process itself) whose
+/// environment carries `MOTHERSHIP_WORKSPACE_ID`.
 ///
 /// Walks only our own process tree (`proc_listchildpids`), never the ~1000-row system
 /// table, so an idle scan is a handful of libproc calls. Owner lookups (argv/env reads)
@@ -20,20 +21,27 @@ actor PortScanner {
         var surface: SurfaceID?
     }
 
-    private let appPID: Int32
+    private var roots: [Int32]
     private var owners: [OwnerKey: Owner] = [:]
 
     /// `rootPID` is this app unless a debug override points the scan at another tree.
     init(rootPID: Int32 = getpid()) {
-        appPID = rootPID
+        roots = [rootPID]
+    }
+
+    /// Pane hosts to walk: the app (or a debug root) plus `mshipd` once it's known.
+    func setRoots(_ pids: [Int32]) {
+        let keep = roots.first.map { [$0] } ?? []
+        roots = keep + pids.filter { !keep.contains($0) }
     }
 
     func scan() -> [ListeningPort] {
         var parent: [Int32: Int32] = [:]
         var descendants: [Int32] = []
-        var queue = [appPID]
+        var queue = roots
+        let rootSet = Set(roots)
         while let pid = queue.popLast(), descendants.count < 4096 {
-            for child in ProcessInspector.childPIDs(of: pid) where child != appPID && parent[child] == nil {
+            for child in ProcessInspector.childPIDs(of: pid) where !rootSet.contains(child) && parent[child] == nil {
                 parent[child] = pid
                 descendants.append(child)
                 queue.append(child)
@@ -63,7 +71,8 @@ actor PortScanner {
 
     private func owner(of pid: Int32, parent: [Int32: Int32]) -> Owner {
         var current: Int32? = pid
-        while let candidate = current, candidate != appPID {
+        let rootSet = Set(roots)
+        while let candidate = current, !rootSet.contains(candidate) {
             if let owner = environmentOwner(of: candidate), owner.workspace != nil { return owner }
             current = parent[candidate]
         }

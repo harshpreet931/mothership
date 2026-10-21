@@ -23,6 +23,9 @@ public enum ControlMethod: String, Sendable, CaseIterable {
     case surfaceSendText = "surface.sendText"
     /// params: `ReadScreenParams` → result: `ReadScreenResult`
     case surfaceReadScreen = "surface.readScreen"
+    /// params: `SurfaceTarget` → result: `OKResult`. Closes the pane, ending its process (and
+    /// its persistent session).
+    case surfaceClose = "surface.close"
 
     /// params: `BrowserOpenParams` → result: `SurfaceResult`
     case browserOpen = "browser.open"

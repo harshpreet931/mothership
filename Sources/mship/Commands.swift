@@ -45,6 +45,16 @@ enum Commands {
         return ExitCode.success
     }
 
+    static func close(_ arguments: [String]) throws(CLIFailure) -> Int32 {
+        var args = Arguments(arguments, command: "close")
+        let surface = try args.option("--surface", "-s").map { (raw) throws(CLIFailure) in try parseSurface(raw, command: "close") }
+        let positionals = try args.positionals()
+        let target = try positionals.first.map { (raw) throws(CLIFailure) in try parseSurface(raw, command: "close") } ?? surface ?? caller.surface
+        guard let target else { throw usageError("which pane? pass a surface id", command: "close") }
+        let _: OKResult = try callApp(.surfaceClose, SurfaceTarget(surface: target))
+        return ExitCode.success
+    }
+
     static func focus(_ arguments: [String]) throws(CLIFailure) -> Int32 {
         let positionals = try Arguments(arguments, command: "focus").positionals()
         guard positionals.count == 1 else { throw usageError("expected one surface id", command: "focus") }

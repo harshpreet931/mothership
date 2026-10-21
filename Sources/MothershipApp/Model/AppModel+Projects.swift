@@ -143,7 +143,9 @@ extension AppModel {
         guard let table = try? ProcessTable.capture() else { return (agentSurfaces.count, 0) }
         var commandSurfaces: Set<SurfaceID> = []
         var unattributed = 0
-        for process in table.descendants(of: getpid()) where process.tty != nil && process.isForegroundGroupLeader && !process.isZombie {
+        // Panes descend from the app (exec backend) or from mshipd (persistent sessions).
+        let panes = paneHostPIDs.flatMap { table.descendants(of: $0) }
+        for process in panes where process.tty != nil && process.isForegroundGroupLeader && !process.isZombie {
             guard !Self.shellNames.contains(process.comm) else { continue }
             let surface = ProcessInspector.arguments(pid: process.pid)?.environment[ShipEnvironment.surfaceID].flatMap { SurfaceID(string: $0) }
             if let surface {
@@ -159,8 +161,10 @@ extension AppModel {
         "zsh", "-zsh", "bash", "-bash", "sh", "-sh", "fish", "-fish", "dash", "ksh", "tcsh", "csh", "nu", "xonsh", "login",
     ]
 
-    /// Asks before quitting while agents or commands run. True means quit.
+    /// Asks before quitting while agents or commands run. True means quit. With persistent
+    /// sessions a quit stops nothing, so it doesn't ask ("Quit and End All Sessions" asks itself).
     func confirmQuit() -> Bool {
+        if endSessionsOnQuit || quitKeepsEverythingRunning { return true }
         let work = runningWork()
         guard let sentence = QuitSummary.sentence(agents: work.agents, commands: work.commands) else { return true }
         NSLog("Mothership: asking before quit: %@", sentence)

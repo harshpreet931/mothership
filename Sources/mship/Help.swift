@@ -9,6 +9,7 @@ enum Help {
             ("split", "--browser URL", "Open a browser pane beside this one"),
             ("new", "[-- COMMAND…]", "Create a workspace tab (--name NAME, --cwd DIR, --background)"),
             ("focus", "SURFACE", "Bring a pane to the front"),
+            ("close", "[SURFACE]", "Close a pane, ending its shell or agent"),
             ("send", "TEXT|-", "Paste text into a pane (--surface ID, --submit; - reads stdin)"),
             ("screen", "", "Print a pane's visible text (--surface ID, --lines N)"),
         ], nil),
@@ -94,6 +95,12 @@ enum Help {
             --background keeps you where you are.
 
               mship new --name review --cwd ~/src/api.worktrees/review -- codex "review this branch"
+            """,
+        "close": """
+            usage: mship close [SURFACE]
+
+            Closes a pane (this one by default), as its close button does: its shell or agent ends,
+            even when sessions are kept running across quits.
             """,
         "focus": """
             usage: mship focus SURFACE

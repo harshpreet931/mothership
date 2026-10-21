@@ -20,6 +20,7 @@ cd "$ROOT"
 echo "==> swift build -c $CONFIG"
 swift build -c "$CONFIG" --product MothershipApp
 swift build -c "$CONFIG" --product mship
+swift build -c "$CONFIG" --product mshipd
 BIN="$(swift build -c "$CONFIG" --show-bin-path)"
 
 APP="$ROOT/build/Mothership.app"
@@ -29,6 +30,7 @@ rm -rf "$APP"
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
 cp "$BIN/MothershipApp" "$CONTENTS/MacOS/Mothership"
 cp "$BIN/mship" "$CONTENTS/MacOS/mship"
+cp "$BIN/mshipd" "$CONTENTS/MacOS/mshipd"
 
 # SwiftPM resource bundles. Their generated `Bundle.module` accessor looks next to
 # `Bundle.main.bundleURL` (the .app root, where codesign allows nothing but Contents/), then

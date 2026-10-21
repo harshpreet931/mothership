@@ -13,6 +13,7 @@ enum AppCommand: String, CaseIterable {
     case toggleSidebar, commandPalette, settings
     case increaseFontSize, decreaseFontSize, resetFontSize
     case clearScreen
+    case quitAndEndSessions
 
     var title: String {
         switch self {
@@ -43,6 +44,7 @@ enum AppCommand: String, CaseIterable {
         case .decreaseFontSize: "Decrease Font Size"
         case .resetFontSize: "Reset Font Size"
         case .clearScreen: "Clear Screen"
+        case .quitAndEndSessions: "Quit and End All Sessions"
         }
     }
 
@@ -75,6 +77,7 @@ enum AppCommand: String, CaseIterable {
         case .decreaseFontSize: "textformat.size.smaller"
         case .resetFontSize: "textformat.size"
         case .clearScreen: "clear"
+        case .quitAndEndSessions: "power"
         }
     }
 
@@ -108,6 +111,7 @@ enum AppCommand: String, CaseIterable {
         case .decreaseFontSize: ("-", .command)
         case .resetFontSize: ("0", [.command, .control])
         case .clearScreen: ("k", [.command, .option])
+        case .quitAndEndSessions: ("q", [.command, .option])
         }
     }
 
@@ -219,6 +223,8 @@ final class CommandRouter: NSObject, NSMenuItemValidation {
         case .clearScreen:
             guard model.screen == .workspaces, !model.isPalettePresented else { return }
             model.focusedSurface?.terminal?.clearScreen()
+        case .quitAndEndSessions:
+            model.quitAndEndAllSessions()
         }
         if [.increaseFontSize, .decreaseFontSize, .resetFontSize].contains(command) {
             UserDefaults.standard.set(model.runtime.hasFontSizeOverride ? Double(model.runtime.fontSize) : 0, forKey: PreferenceKey.fontSize)

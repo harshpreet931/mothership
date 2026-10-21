@@ -3,6 +3,7 @@ import GitKit
 import Observation
 import ShipModel
 import ShipProtocol
+import SessionHost
 import TerminalEngine
 
 /// What the window layer provides to the model.
@@ -39,6 +40,18 @@ final class AppModel {
     @ObservationIgnored var onSessionsChanged: (([AgentSession]) -> Void)?
     /// Extra environment for every shell (PATH with the `mship` shim prepended).
     @ObservationIgnored var shellEnvironment: [String: String] = [:]
+    /// The `mshipd` connection that keeps panes alive across quits (AppModel+Sessions); nil
+    /// when that's off or unavailable, and panes run under the app (`.exec`).
+    @ObservationIgnored var sessionHost: SessionHostClient?
+    /// Set by "Quit and End All Sessions": this quit ends sessions even with keep-alive on.
+    @ObservationIgnored var endSessionsOnQuit = false
+    /// Processes whose trees hold panes: this app, plus `mshipd` once connected.
+    @ObservationIgnored var paneHostPIDs: [Int32] = [getpid()] {
+        didSet { if paneHostPIDs != oldValue { onPaneHostPIDsChanged?(paneHostPIDs) } }
+    }
+    /// AppDelegate forwards pane-host PIDs to the agent engine and the port scanner.
+    @ObservationIgnored var onPaneHostPIDsChanged: (([Int32]) -> Void)?
+    @ObservationIgnored var isReconnectingSessionHost = false
     @ObservationIgnored weak var host: AppWindowHost?
     @ObservationIgnored let store: StateStore?
 
@@ -158,9 +171,7 @@ final class AppModel {
         saveNow()
         updatesTask?.cancel()
         gitTimer?.invalidate()
-        for workspace in workspaces {
-            for surface in workspace.surfaces.values { surface.terminal?.terminate() }
-        }
+        releaseTerminalsForQuit()
         let engine = self.engine
         Task { await engine.stop() }
     }
@@ -626,9 +637,11 @@ final class AppModel {
 
     /// - Parameter startupCommand: Run by the user's login shell, which then stays as an
     ///   interactive shell in the pane (nothing is typed; see `ShellLaunch`).
+    /// - Parameter reattach: Restoring a saved pane: pick up its live `mshipd` session (screen
+    ///   and process intact) if there is one.
     func makeSurface(
         id: SurfaceID, kind: SurfaceKind, workspace: Workspace, cwd: String?, startupCommand: String? = nil,
-        url: URL? = nil
+        url: URL? = nil, reattach: Bool = false
     ) -> PaneSurface {
         let surface = PaneSurface(id: id, kind: kind, workspaceID: workspace.id, cwd: cwd, url: url?.absoluteString)
         switch kind {
@@ -636,8 +649,10 @@ final class AppModel {
             let launch = Self.terminalLaunch(startupCommand, environment: shellEnvironment)
             let terminal = TerminalSurfaceController(
                 surfaceID: id, workspaceID: workspace.id, workingDirectory: cwd, command: launch.command,
-                initialInput: launch.typedInput, environment: launch.environment, runtime: runtime
+                initialInput: launch.typedInput, environment: launch.environment,
+                sessionHost: persistentSessionHost(), reattach: reattach, runtime: runtime
             )
+            configurePersistence(of: terminal, surface: surface)
             terminal.onSignal = { [weak self] signal in self?.handleSignal(signal, from: id) }
             terminal.onFocusChange = { [weak self] focused in
                 if focused { self?.surfaceDidFocus(id) }
@@ -757,7 +772,7 @@ final class AppModel {
                 let surface = makeSurface(
                     id: surfaceID, kind: descriptor.kind, workspace: workspace,
                     cwd: Self.resolveDirectory(descriptor.cwd ?? saved.rootDirectory),
-                    url: descriptor.url.flatMap(URL.init(string:))
+                    url: descriptor.url.flatMap(URL.init(string:)), reattach: true
                 )
                 surface.title = descriptor.title
                 surface.lastAgentSession = descriptor.lastAgentSession

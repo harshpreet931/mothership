@@ -50,6 +50,12 @@ extension AppModel {
         for key in keys { terminal.sendKey(key) }
     }
 
+    /// `surface.close`: as closing the pane in the UI (its process and session end).
+    func closePane(_ surfaceID: SurfaceID) throws(RPCError) {
+        guard surface(surfaceID) != nil else { throw .notFound("No surface \(surfaceID)") }
+        closeSurface(surfaceID)
+    }
+
     /// `surface.readScreen`
     func readScreen(_ params: ReadScreenParams) throws(RPCError) -> ReadScreenResult {
         let target = try resolveSurface(params.surface)

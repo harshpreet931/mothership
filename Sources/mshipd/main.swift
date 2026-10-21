@@ -8,6 +8,7 @@ import ShipModel
 //
 //   mshipd --serve --socket PATH [--log PATH] [--idle-exit SECONDS]   run the host (foreground)
 //   mshipd --launch --socket PATH [--log PATH]                        start --serve detached, exit
+//   mshipd --list --socket PATH                                       print a running host's sessions
 //   mshipd --exec-child EXECUTABLE CWD ARGV0 [ARGS…]                  internal: PTY trampoline
 
 let arguments = Array(CommandLine.arguments.dropFirst())
@@ -47,6 +48,35 @@ if arguments.contains("--launch") {
     } catch {
         fputs("mshipd: \(error)\n", stderr)
         exit(1)
+    }
+}
+
+// Diagnostics: what a running host holds.
+if arguments.contains("--list") {
+    do {
+        let client = try SessionHostClient.connect(socketPath: socketPath, client: "mshipd --list")
+        let done = DispatchSemaphore(value: 0)
+        // Detached: top-level code is main-actor isolated, and the main thread waits below.
+        Task.detached {
+            defer { done.signal() }
+            guard let sessions = try? await client.list() else { return }
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            let body: [String: AnyEncodable] = [
+                "pid": AnyEncodable(client.welcome.pid), "version": AnyEncodable(client.welcome.version),
+                "sessions": AnyEncodable(sessions),
+            ]
+            if let data = try? encoder.encode(body) { print(String(decoding: data, as: UTF8.self)) }
+        }
+        if done.wait(timeout: .now() + 3) == .timedOut {
+            fputs("mshipd: no answer from \(socketPath)\n", stderr)
+            exit(1)
+        }
+        exit(0)
+    } catch {
+        fputs("mshipd: not running on \(socketPath)\n", stderr)
+        exit(3)
     }
 }
 
@@ -92,3 +122,11 @@ do {
     exit(1)
 }
 dispatchMain()
+
+/// Type-erased Encodable for the --list output.
+struct AnyEncodable: Encodable, @unchecked Sendable {
+    // @unchecked: wraps immutable values for one encode on one thread.
+    private let encodeValue: (any Encoder) throws -> Void
+    init(_ value: some Encodable) { encodeValue = value.encode }
+    func encode(to encoder: any Encoder) throws { try encodeValue(encoder) }
+}

@@ -17,6 +17,7 @@ let commands: [String: ([String]) throws(CLIFailure) -> Int32] = [
     "split": Commands.split,
     "new": Commands.newWorkspace,
     "focus": Commands.focus,
+    "close": Commands.close,
     "send": Commands.send,
     "screen": Commands.screen,
     "open": Commands.open,

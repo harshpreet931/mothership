@@ -62,6 +62,8 @@ enum MainMenu {
         menu.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Mothership", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        // Plain Quit leaves shells and agents running in mshipd (sessions.keepAlive); this ends them.
+        menu.addItem(command(.quitAndEndSessions, router: router))
         return menu
     }
 

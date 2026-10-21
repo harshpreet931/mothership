@@ -227,6 +227,13 @@ final class AppServices {
             params.surface = params.surface ?? context.caller.surface
             return try await model.readScreen(params)
         }
+        router.on(.surfaceClose) { (params: SurfaceTarget, context) -> OKResult in
+            guard let surface = params.surface ?? context.caller.surface else {
+                throw RPCError.invalidParams("surface is required outside Mothership")
+            }
+            try await model.closePane(surface)
+            return OKResult()
+        }
 
         router.on(.browserOpen) { (params: BrowserOpenParams, context) in
             var params = params
