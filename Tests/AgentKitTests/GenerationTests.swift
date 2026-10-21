@@ -150,14 +150,18 @@ struct GenerationTests {
         #expect(GeneratedTextCleaner.title("  \n ") == nil)
     }
 
-    @Test func userRenameWinsOverGeneratedTitle() async throws {
+    /// Titles match what the agent itself shows (its resume list); the generated one only
+    /// fills in when the agent has none.
+    @Test func agentTitlesWinOverGeneratedTitle() async throws {
         var record = SessionRecord(session: AgentSession(id: AgentSessionKey(kind: .claude, sessionID: "x"), cwd: "/work/app"))
         record.generatedTitle = "Generated name"
-        record.nativeTitle = "Agent's own title"
-        record.nativeTitleRank = 2
         var session = record.session
         AgentReducer.refreshTitle(&session, record: &record)
         #expect(session.title == "Generated name")
+        record.nativeTitle = "Agent's own title"
+        record.nativeTitleRank = 2
+        AgentReducer.refreshTitle(&session, record: &record)
+        #expect(session.title == "Agent's own title")
         record.nativeTitle = "My rename"
         record.nativeTitleRank = 3
         AgentReducer.refreshTitle(&session, record: &record)

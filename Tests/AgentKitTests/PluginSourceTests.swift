@@ -65,7 +65,8 @@ struct PluginSourceTests {
             await send("message.part.delta", { sessionID: "ses_1", delta: "ignored" });
             await send("permission.asked", { id: "per_1", sessionID: "ses_1", permission: "bash", patterns: ["rm -rf build"], metadata: {} });
             await send("session.idle", { sessionID: "ses_1" });
-            await new Promise((resolve) => setTimeout(resolve, 1500));
+            // Generous: under a loaded parallel test run the fake shim answers slowly.
+            await new Promise((resolve) => setTimeout(resolve, 5000));
             console.log(JSON.stringify(replies));
 
             """.utf8).write(to: driver)

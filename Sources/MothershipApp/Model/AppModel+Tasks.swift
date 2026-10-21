@@ -333,10 +333,21 @@ extension AppModel {
         return resolve(run.worktreePath) != resolve(task.repoRoot)
     }
 
+    /// Lists what changed rather than quoting the prompt: prompts can hold private context,
+    /// and a PR on a public repo is public.
     static func pullRequestBody(_ task: AgentTask, _ run: TaskRun) -> String {
-        let prompt = task.prompt.count > 4000 ? String(task.prompt.prefix(4000)) + "…" : task.prompt
-        let quoted = prompt.split(separator: "\n", omittingEmptySubsequences: false).map { "> " + $0 }.joined(separator: "\n")
-        return "\(quoted)\n\nWritten by \(run.agent.displayName) in a Mothership task."
+        var lines = ["Written by \(run.agent.displayName) in a Mothership task."]
+        if let diff = run.diff, !diff.isEmpty {
+            let files = diff.files.count == 1 ? "1 file" : "\(diff.files.count) files"
+            lines.append("")
+            lines.append("\(files) changed, +\(diff.insertions) −\(diff.deletions):")
+            lines.append("")
+            for file in diff.files.prefix(50) {
+                lines.append("- `\(file.path)` (+\(file.insertions) −\(file.deletions))")
+            }
+            if diff.files.count > 50 { lines.append("- …and \(diff.files.count - 50) more") }
+        }
+        return lines.joined(separator: "\n")
     }
 }
 

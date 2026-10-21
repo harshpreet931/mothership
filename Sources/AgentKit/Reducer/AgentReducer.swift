@@ -382,20 +382,17 @@ public enum AgentReducer {
         if list.count > limit { list.removeLast(list.count - limit) }
     }
 
-    /// The user's own name for the session, then the on-device model's, then the agent's,
-    /// then the cleaned first prompt; the folder name is the last resort.
+    /// The user's own name for the session, then the agent's own title (so Mothership matches
+    /// what the agent's resume list shows), then the on-device model's, then the cleaned first
+    /// prompt; the folder name is the last resort.
     static func refreshTitle(_ session: inout AgentSession, record: inout SessionRecord) {
         record.hasExplicitTitle = record.nativeTitle != nil || record.generatedTitle != nil
-        if let native = record.nativeTitle, record.nativeTitleRank >= 3 {
+        if let native = record.nativeTitle {
             session.title = native
             return
         }
         if let generated = record.generatedTitle {
             session.title = generated
-            return
-        }
-        if let native = record.nativeTitle {
-            session.title = native
             return
         }
         guard let prompt = record.titlePrompt ?? record.firstPrompt else { return }
