@@ -34,6 +34,11 @@ struct HomeView: View {
                             }
                         }
                         .padding(.top, 28)
+                        if model.needsOnboarding {
+                            OnboardingCard(model: model)
+                                .frame(width: min(760, geometry.size.width * 0.66 - 80))
+                                .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
+                        }
                         HomePanels(model: model, width: min(760, geometry.size.width * 0.66 - 80))
                     }
                     .padding(.trailing, 40)
@@ -113,6 +118,63 @@ struct HomePanels: View {
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
+    }
+}
+
+/// First run (Hark's "hark can do more"): shown until any agent integration is connected.
+struct OnboardingCard: View {
+    let model: AppModel
+    @State private var pending: IntegrationChange?
+
+    var body: some View {
+        let detected = model.integrations.filter { $0.executablePath != nil }
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("mothership can do more")
+                    .font(.system(size: 28, weight: .medium, design: .serif))
+                    .foregroundStyle(Sky.ink)
+                Text("Connect your agents so Mothership knows the moment they need you.")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Sky.ink.opacity(0.78))
+            }
+            VStack(spacing: 0) {
+                ForEach(Array(detected.enumerated()), id: \.element.id) { index, status in
+                    if index > 0 { Rectangle().fill(Sky.hairline).frame(height: 1).padding(.leading, 44) }
+                    HStack(alignment: .top, spacing: 12) {
+                        AgentMark(kind: status.kind, size: 20)
+                            .frame(width: 26, height: 26)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(status.kind.displayName)
+                                .font(.system(size: 15))
+                                .foregroundStyle(Sky.ink)
+                            Text([status.version.map { "v\($0)" }, status.executablePath.map(PathDisplay.abbreviated)].compactMap { $0 }.joined(separator: " · "))
+                                .font(Sky.Font.meta)
+                                .foregroundStyle(Sky.tertiary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            if status.kind == .codex {
+                                Text(IntegrationCopy.codexTrustNote)
+                                    .font(.system(size: 12.5))
+                                    .foregroundStyle(Sky.secondary)
+                                    .padding(.top, 2)
+                            }
+                        }
+                        Spacer(minLength: 8)
+                        Button("Connect") { pending = IntegrationChange(kind: status.kind, install: true) }
+                            .buttonStyle(SecondaryPillStyle(height: 30))
+                    }
+                    .padding(.vertical, 12)
+                }
+            }
+            .padding(.horizontal, 14)
+            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Sky.bubbleUser))
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassPanel()
+        .sheet(item: $pending) { change in
+            IntegrationConsentSheet(model: model, change: change) { pending = nil }
+        }
     }
 }
 
@@ -294,27 +356,29 @@ struct PortsPanel: View {
     let model: AppModel
 
     var body: some View {
-        HomePanel(symbol: "network", title: "Ports") {
-            if model.ports.isEmpty {
+        // Ports from workspace shells first; anything else after.
+        let ports = model.ports.sorted { ($0.workspaceID == nil ? 1 : 0, $0.port) < ($1.workspaceID == nil ? 1 : 0, $1.port) }
+        HomePanel(symbol: "network", title: "Ports", trailing: ports.count > 5 ? "\(ports.count)" : nil) {
+            if ports.isEmpty {
                 Text("No dev servers listening.")
                     .font(.system(size: 13))
                     .foregroundStyle(Sky.secondary)
             } else {
                 VStack(spacing: 0) {
-                    ForEach(Array(model.ports.enumerated()), id: \.element.id) { index, port in
+                    ForEach(Array(ports.prefix(5).enumerated()), id: \.element.id) { index, port in
                         if index > 0 { Rectangle().fill(Sky.hairline).frame(height: 1) }
                         HStack(spacing: 8) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(verbatim: "localhost:" + String(port.port))
                                     .font(.system(size: 13, weight: .medium).monospacedDigit())
                                     .foregroundStyle(Sky.ink)
-                                Text([port.process, port.workspaceName].compactMap { $0 }.joined(separator: " · "))
+                                Text([port.process, model.workspaceName(for: port)].compactMap { $0 }.joined(separator: " · "))
                                     .font(Sky.Font.meta)
                                     .foregroundStyle(Sky.tertiary)
                             }
                             Spacer()
                             Button("Open") {
-                                if let url = port.url { model.openBrowserSplit(url: url) }
+                                model.openPort(port)
                             }
                             .buttonStyle(SecondaryPillStyle(height: 26))
                         }

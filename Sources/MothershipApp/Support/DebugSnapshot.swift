@@ -58,6 +58,8 @@ enum DebugSnapshot {
             NSLog("Mothership: snapshot %@", capture(window, to: URL(fileURLWithPath: path)) ? path : "failed")
             SnapshotMode.shared.active = false
             logGeometry(window)
+            let ports = window.model.ports.map { "\($0.port) \($0.process) ws=\(window.model.workspaceName(for: $0) ?? "-")" }
+            NSLog("Mothership: ports %@", ports.joined(separator: ", "))
             if let focused = window.model.focusedSurface, let text = focused.terminal?.readScreenText(scrollbackLines: 0) {
                 NSLog("Mothership: focused pane %@ screen:\n%@", focused.id.description, text)
             }

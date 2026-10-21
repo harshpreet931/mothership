@@ -120,6 +120,28 @@ struct WorkspaceRow: View {
                     .truncationMode(.middle)
                     .layoutPriority(-1)
             }
+            let ports = model.ports(in: workspace)
+            if !ports.isEmpty {
+                Spacer(minLength: 6)
+                HStack(spacing: 3) {
+                    ForEach(ports.prefix(2)) { port in
+                        Button {
+                            model.openPort(port)
+                        } label: {
+                            Text(verbatim: ":" + String(port.port))
+                                .font(.system(size: 10.5, design: .monospaced))
+                                .foregroundStyle(secondaryText)
+                                .padding(.horizontal, 5)
+                                .frame(height: 16)
+                                .background(Capsule().fill(isSelected ? Sky.onInk.opacity(0.14) : Sky.recess))
+                                .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Open localhost:\(String(port.port)) (\(port.process)) beside this workspace")
+                    }
+                }
+                .fixedSize()
+            }
         }
         .font(Sky.Font.meta)
         .foregroundStyle(tertiaryText)

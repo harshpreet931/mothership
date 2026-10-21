@@ -39,10 +39,15 @@ struct AttentionToast: Identifiable, Equatable {
 struct ListeningPort: Identifiable, Equatable, Sendable {
     var id: Int { port }
     let port: Int
+    /// The listening process ("node", "python3", "postgres").
     let process: String
+    /// The workspace whose shell started it (from the process's `MOTHERSHIP_WORKSPACE_ID`).
+    var workspaceID: WorkspaceID?
+    var surfaceID: SurfaceID?
+    /// Fixture-only fallback when there is no workspace ID (demo mode).
     var workspaceName: String?
 
-    var url: URL? { URL(string: "http://localhost:\(port)") }
+    var url: URL? { URL(string: "http://localhost:" + String(port)) }
 }
 
 struct QueuedPrompt: Identifiable, Equatable {
@@ -72,6 +77,7 @@ extension AppModel {
         guard self.screen != screen else { return }
         withAnimationIfAllowed { self.screen = screen }
         if screen == .workspaces, let focused = focusedSurface?.id { requestFocus(focused) }
+        if screen == .home { Task { await refreshPortsIfVisible() } }
     }
 
     /// ⌂ toggles Home.
@@ -207,6 +213,52 @@ extension AppModel {
             }
         }
         if remaining != composerQueue { composerQueue = remaining }
+    }
+
+    // MARK: Onboarding
+
+    /// First run: agents are on this Mac but none is connected yet. The card goes away by
+    /// itself once one is.
+    var needsOnboarding: Bool {
+        !integrations.contains(where: \.installed) && integrations.contains { $0.executablePath != nil }
+    }
+
+    // MARK: Ports
+
+    /// Ports only matter where they're shown: Home, or the sidebar's row chips.
+    var portsVisible: Bool {
+        switch screen {
+        case .home: true
+        case .workspaces, .fleet: !isSidebarCollapsed
+        case .settings: false
+        }
+    }
+
+    func refreshPortsIfVisible() async {
+        // Nothing to look at while the app is hidden or the window is in the Dock.
+        let onScreen = !NSApp.isHidden && !NSApp.windows.contains { $0 is MainWindow && $0.isMiniaturized }
+        guard portsVisible, onScreen, let provider = portsProvider else { return }
+        let fresh = await provider()
+        if fresh != ports { ports = fresh }
+    }
+
+    func ports(in workspace: Workspace) -> [ListeningPort] {
+        ports.filter { $0.workspaceID == workspace.id || ($0.workspaceID == nil && $0.workspaceName == workspace.name) }
+    }
+
+    func workspaceName(for port: ListeningPort) -> String? {
+        port.workspaceID.flatMap { workspace(id: $0)?.name } ?? port.workspaceName
+    }
+
+    /// A browser split in the port's own workspace (or the current one).
+    func openPort(_ port: ListeningPort) {
+        guard let url = port.url else { return }
+        if let id = port.workspaceID ?? workspaces.first(where: { $0.name == port.workspaceName })?.id {
+            selectWorkspace(id)
+        } else {
+            show(.workspaces)
+        }
+        openBrowserSplit(url: url)
     }
 
     // MARK: Home

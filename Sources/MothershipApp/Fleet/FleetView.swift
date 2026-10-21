@@ -51,16 +51,7 @@ struct FleetView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollView(.vertical) {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 320), spacing: 12, alignment: .top)], alignment: .leading, spacing: 12) {
-                        ForEach(shown) { session in
-                            FleetCard(model: model, session: session)
-                        }
-                    }
-                    .padding(.bottom, 12)
-                    .animation(Sky.spring, value: shown.map(\.id))
-                }
-                .scrollIndicators(.never)
+                FleetGrid(model: model, sessions: shown)
             }
         }
     }
@@ -68,6 +59,43 @@ struct FleetView: View {
     private func title(for filter: FleetFilter, in sessions: [AgentSession]) -> String {
         let count = sessions.filter(filter.includes).count
         return filter == .all || count == 0 ? filter.title : "\(filter.title) \(count)"
+    }
+}
+
+/// A fixed-column grid (cards ≥ 320 pt wide): every row starts at the same top and its
+/// cards share the tallest card's height. No insertion animation, so streaming session
+/// updates can never leave a card mid-flight.
+struct FleetGrid: View {
+    let model: AppModel
+    let sessions: [AgentSession]
+    static let spacing: CGFloat = 12
+    static let minimumCardWidth: CGFloat = 320
+
+    var body: some View {
+        GeometryReader { geometry in
+            let columns = max(1, Int((geometry.size.width + Self.spacing) / (Self.minimumCardWidth + Self.spacing)))
+            let rows = stride(from: 0, to: sessions.count, by: columns).map { Array(sessions[$0 ..< min($0 + columns, sessions.count)]) }
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: Self.spacing) {
+                    ForEach(rows, id: \.first?.id) { row in
+                        HStack(alignment: .top, spacing: Self.spacing) {
+                            ForEach(row) { session in
+                                FleetCard(model: model, session: session)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                            }
+                            // Keep the last row's cards the same width as the rows above.
+                            ForEach(0 ..< (columns - row.count), id: \.self) { _ in
+                                Color.clear.frame(maxWidth: .infinity, maxHeight: 1)
+                            }
+                        }
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(.bottom, Self.spacing)
+                .transaction { $0.animation = nil }
+            }
+            .scrollIndicators(.never)
+        }
     }
 }
 
@@ -86,10 +114,11 @@ struct FleetCard: View {
                     model.resolvePermission(request, decision: decision)
                 }
             }
+            Spacer(minLength: 0)
             footer
         }
         .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .glassPanel(radius: 22)
         .overlay {
             RoundedRectangle(cornerRadius: 22, style: .continuous)

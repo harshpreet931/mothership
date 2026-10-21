@@ -187,9 +187,10 @@ public final class TerminalRuntime {
                 builder.withFontSize(size)
             }
             if !composed.definesPadding {
-                // Sky §8: 16 / 14 inside a radius-18 card.
+                // Sky §8: 16 / 14 inside a radius-18 card. The card's status strip already
+                // pads the top, so the terminal's own top padding stays small.
                 builder.withWindowPaddingX(16)
-                builder.withWindowPaddingY(14)
+                builder.withCustom("window-padding-y", "4,14")
                 builder.withCustom("window-padding-balance", "true")
             }
             if backgroundOpacity < 1 {

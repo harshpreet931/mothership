@@ -397,6 +397,22 @@ actor DemoAgentEngine: AgentEngineProtocol {
         return [claudeRefactor, codexCharts, geminiDocs, claudeInfra, opencodeAPI]
     }
 
+    /// What a hook install would write, for the consent sheet in demo mode.
+    static func plannedContents(_ kind: AgentKind) -> String? {
+        let shim = "~/Library/Application Support/Mothership/bin/mship"
+        let events = kind == .codex
+            ? ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Stop"]
+            : ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Notification", "Stop"]
+        let entries = events.map { event in
+            """
+                "\(event)": [
+                  { "hooks": [ { "type": "command", "command": "\(shim) hook \(kind.rawValue) \(event)" } ] }
+                ]
+            """
+        }
+        return "{\n  \"hooks\": {\n" + entries.joined(separator: ",\n") + "\n  }\n}\n"
+    }
+
     /// Dev servers for Home's Ports panel.
     static let demoPorts: [ListeningPort] = [
         ListeningPort(port: 3000, process: "node · vite", workspaceName: "web-dashboard"),

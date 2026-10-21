@@ -76,6 +76,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         if isDemo {
             model.portsProvider = { DemoAgentEngine.demoPorts }
+            model.plannedIntegrationChange = { kind in DemoAgentEngine.plannedContents(kind) }
+        } else {
+            // MOTHERSHIP_PORTS_ROOT_PID (debug): scan another process tree, to verify ports
+            // where this build's own shells can't open sockets.
+            let scanner = PortScanner(rootPID: environment["MOTHERSHIP_PORTS_ROOT_PID"].flatMap(Int32.init) ?? getpid())
+            model.portsProvider = { await scanner.scan() }
+            if let engine = model.engine as? AgentEngine {
+                model.plannedIntegrationChange = { kind in (try? await engine.plannedIntegrationContents(kind)) ?? nil }
+            }
         }
         // Debug aids for verifying UI (see DebugSnapshot): MOTHERSHIP_SKY picks a sky without
         // saving it; MOTHERSHIP_SNAPSHOT_VIEW opens home | fleet | palette | settings[:tab].
@@ -85,7 +94,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if let path = environment["MOTHERSHIP_SNAPSHOT"], !path.isEmpty {
             DebugSnapshot.prepareView(environment["MOTHERSHIP_SNAPSHOT_VIEW"], model: model)
-            DebugSnapshot.schedule(to: path, window: windowController)
+            let delay = environment["MOTHERSHIP_SNAPSHOT_DELAY"].flatMap(Double.init) ?? 2.4
+            DebugSnapshot.schedule(to: path, after: delay, window: windowController)
         }
         // MOTHERSHIP_DEBUG_INPUT="cmd": pasted + Enter into the focused pane after launch; the
         // pane's screen text is logged with the snapshot (exercises paste/sendKey/readScreen).

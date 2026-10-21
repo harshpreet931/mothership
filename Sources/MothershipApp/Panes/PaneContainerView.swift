@@ -25,6 +25,8 @@ struct PaneActions {
 @MainActor
 final class PaneContainerView: NSView {
     static let cornerRadius = Sky.radiusPane
+    /// Top padding of terminal cards that holds the pane capsule.
+    static let statusStripHeight: CGFloat = 24
 
     let surfaceID: SurfaceID
     private let elevationLayer = CALayer()
@@ -48,6 +50,8 @@ final class PaneContainerView: NSView {
     private var progress: Double?
     private var dark = true
     private var terminalIsDark = true
+    /// Terminal panes (those with chrome) reserve the status strip; browsers bring a toolbar.
+    private var reservesStatusStrip = false
 
     init(surfaceID: SurfaceID) {
         self.surfaceID = surfaceID
@@ -121,6 +125,10 @@ final class PaneContainerView: NSView {
         setProgress(progress)
         setResume(resume)
         self.chrome = chrome
+        if reservesStatusStrip != (chrome != nil) {
+            reservesStatusStrip = chrome != nil
+            needsLayout = true
+        }
         updateChrome()
         updateLayerColors()
     }
@@ -131,9 +139,13 @@ final class PaneContainerView: NSView {
         super.layout()
         clipView.frame = bounds
         tintView?.frame = clipView.bounds
-        let banner = bannerHost == nil ? 0 : ResumeBanner.height + 16
-        bannerHost?.frame = NSRect(x: 0, y: 8, width: bounds.width, height: ResumeBanner.height)
-        content?.frame = NSRect(x: 0, y: banner, width: bounds.width, height: max(0, bounds.height - banner))
+        // Terminal cards keep a status strip as top padding: the pane capsule lives there,
+        // so it can never cover a glyph, and the terminal never resizes when it appears.
+        let strip = reservesStatusStrip ? Self.statusStripHeight : 0
+        let banner = bannerHost == nil ? 0 : ResumeBanner.height + 8
+        bannerHost?.frame = NSRect(x: 0, y: strip + 2, width: bounds.width, height: ResumeBanner.height)
+        let top = strip + banner
+        content?.frame = NSRect(x: 0, y: top, width: bounds.width, height: max(0, bounds.height - top))
         dimView.frame = clipView.bounds
         let path = CGPath(roundedRect: bounds, cornerWidth: Self.cornerRadius, cornerHeight: Self.cornerRadius, transform: nil)
         elevationLayer.frame = bounds
@@ -224,8 +236,9 @@ final class PaneContainerView: NSView {
     private func layoutChrome() {
         guard let host = chromeHost else { return }
         let size = host.intrinsicContentSize
-        let width = min(max(size.width, 60), bounds.width - 16)
-        host.frame = NSRect(x: bounds.width - width - 8, y: bannerHost == nil ? 8 : ResumeBanner.height + 16, width: width, height: 28)
+        let width = min(max(size.width, PaneChrome.height), bounds.width - 16)
+        let y = (Self.statusStripHeight - PaneChrome.height) / 2
+        host.frame = NSRect(x: bounds.width - width - 6, y: y, width: width, height: PaneChrome.height)
     }
 
     // MARK: States
@@ -338,6 +351,9 @@ final class FlippedView: NSView {
 /// The pane capsule: title · state glyph · split · close on hover; just the state glyph in
 /// a small circle while an agent is active and the pointer is elsewhere.
 struct PaneChrome: View {
+    /// Fits inside the card's status strip (`PaneContainerView.statusStripHeight`).
+    static let height: CGFloat = 20
+
     let model: PaneChromeModel
     let expanded: Bool
     let onSplitRight: () -> Void
@@ -345,26 +361,26 @@ struct PaneChrome: View {
     let onClose: () -> Void
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 5) {
             if let session = model.session {
-                AgentStatusGlyph(kind: session.kind, state: session.state, unread: session.unread, hasPermission: session.pendingPermission != nil, size: 11)
+                AgentStatusGlyph(kind: session.kind, state: session.state, unread: session.unread, hasPermission: session.pendingPermission != nil, size: 9)
             }
             if expanded {
                 Text(model.title)
-                    .font(.system(size: 11.5, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Sky.ink.opacity(0.8))
                     .lineLimit(1)
                     .frame(maxWidth: 220, alignment: .leading)
-                Rectangle().fill(Sky.ink.opacity(0.12)).frame(width: 1, height: 12)
+                Rectangle().fill(Sky.ink.opacity(0.12)).frame(width: 1, height: 10)
                 chromeButton("rectangle.split.2x1", "Split Right (⌘D)", onSplitRight)
                 chromeButton("rectangle.split.1x2", "Split Down (⌘⇧D)", onSplitDown)
                 chromeButton("xmark", "Close Pane (⌘W)", onClose)
             }
         }
-        .padding(.leading, expanded ? 10 : 4)
-        .padding(.trailing, 4)
-        .frame(height: 28)
-        .frame(minWidth: 28)
+        .padding(.leading, expanded ? 8 : 2)
+        .padding(.trailing, 2)
+        .frame(height: Self.height)
+        .frame(minWidth: Self.height)
         .modifier(GlassBackground(shape: Capsule(style: .continuous), dense: true))
         .fixedSize()
         .help(expanded ? "" : model.title)
@@ -373,9 +389,9 @@ struct PaneChrome: View {
     private func chromeButton(_ symbol: String, _ help: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 10.5, weight: .medium))
+                .font(.system(size: 9.5, weight: .medium))
                 .foregroundStyle(Sky.ink.opacity(0.7))
-                .frame(width: 22, height: 22)
+                .frame(width: 18, height: 18)
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)

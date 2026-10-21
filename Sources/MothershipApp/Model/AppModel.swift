@@ -92,6 +92,9 @@ final class AppModel {
     var recentlyResolved: [AgentSessionKey: PermissionDecisionKind] = [:]
     /// Supplies listening ports (SystemProbe in the real app, fixtures in demo mode).
     @ObservationIgnored var portsProvider: (() async -> [ListeningPort])?
+    /// The exact config an integration install would write, for the consent sheet
+    /// (`AgentEngine.plannedIntegrationContents`, wired in AppDelegate). Nil when unknown.
+    @ObservationIgnored var plannedIntegrationChange: ((AgentKind) async -> String?)?
     @ObservationIgnored private var portsTask: Task<Void, Never>?
 
     @ObservationIgnored private var updatesTask: Task<Void, Never>?
@@ -131,11 +134,8 @@ final class AppModel {
         }
         portsTask = Task { [weak self] in
             while !Task.isCancelled {
-                if let provider = self?.portsProvider {
-                    let ports = await provider()
-                    if self?.ports != ports { self?.ports = ports }
-                }
-                try? await Task.sleep(for: .seconds(5))
+                await self?.refreshPortsIfVisible()
+                try? await Task.sleep(for: .seconds(3))
             }
         }
     }

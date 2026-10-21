@@ -99,15 +99,7 @@ struct GlassListRow<Leading: View, Trailing: View>: View {
 
 struct AgentsSettings: View {
     let model: AppModel
-    @State private var pending: PendingChange?
-    @State private var working: AgentKind?
-    @State private var errorMessage: String?
-
-    struct PendingChange: Identifiable {
-        var id: String { kind.rawValue + (install ? "+" : "-") }
-        let kind: AgentKind
-        let install: Bool
-    }
+    @State private var pending: IntegrationChange?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -133,20 +125,9 @@ struct AgentsSettings: View {
                 .font(.system(size: 12.5))
                 .foregroundStyle(Sky.secondary)
                 .padding(.horizontal, 22)
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(Sky.danger)
-                    .padding(.horizontal, 22)
-            }
         }
-        .alert(item: $pending) { change in
-            Alert(
-                title: Text("\(change.install ? "Connect" : "Disconnect") \(change.kind.displayName)?"),
-                message: Text(Self.explanation(for: change.kind, install: change.install)),
-                primaryButton: .default(Text(change.install ? "Connect" : "Disconnect")) { perform(change) },
-                secondaryButton: .cancel()
-            )
+        .sheet(item: $pending) { change in
+            IntegrationConsentSheet(model: model, change: change) { pending = nil }
         }
     }
 
@@ -162,14 +143,12 @@ struct AgentsSettings: View {
 
     @ViewBuilder
     private func trailing(_ status: IntegrationStatus) -> some View {
-        if working == status.kind {
-            ProgressView().controlSize(.small)
-        } else if needsRepair(status) {
-            Button("Repair") { pending = PendingChange(kind: status.kind, install: true) }
+        if needsRepair(status) {
+            Button("Repair") { pending = IntegrationChange(kind: status.kind, install: true) }
                 .buttonStyle(SecondaryPillStyle(height: 30, foreground: Sky.attention))
         } else if status.installed {
             Button {
-                pending = PendingChange(kind: status.kind, install: false)
+                pending = IntegrationChange(kind: status.kind, install: false)
             } label: {
                 HStack(spacing: 5) {
                     Text("Connected")
@@ -179,43 +158,11 @@ struct AgentsSettings: View {
             .buttonStyle(GhostPillStyle(height: 30, foreground: Sky.ink.opacity(0.7)))
             .help("Disconnect…")
         } else {
-            Button("Connect") { pending = PendingChange(kind: status.kind, install: true) }
+            Button("Connect") { pending = IntegrationChange(kind: status.kind, install: true) }
                 .buttonStyle(SecondaryPillStyle(height: 30))
                 .disabled(status.executablePath == nil)
                 .opacity(status.executablePath == nil ? 0.45 : 1)
         }
-    }
-
-    private func perform(_ change: PendingChange) {
-        working = change.kind
-        errorMessage = nil
-        Task {
-            do {
-                if change.install {
-                    try await model.installIntegration(change.kind)
-                } else {
-                    try await model.uninstallIntegration(change.kind)
-                }
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-            working = nil
-        }
-    }
-
-    static func explanation(for kind: AgentKind, install: Bool) -> String {
-        let file = switch kind {
-        case .claude: "~/.claude/settings.json (the \"hooks\" section)"
-        case .codex: "~/.codex/hooks.json"
-        case .opencode: "a plugin file in ~/.config/opencode/plugins/"
-        case .gemini: "~/.gemini/settings.json (the \"hooks\" section)"
-        default: "the agent's configuration"
-        }
-        let shim = PathDisplay.abbreviated(ShipPaths.cliShim.path)
-        if install {
-            return "Mothership will add entries to \(file) that run \(shim) hook \(kind.rawValue) <event>. Existing settings and other tools' hooks are kept, and a timestamped backup is saved to \(PathDisplay.abbreviated(ShipPaths.backups.path)) first."
-        }
-        return "Mothership will remove only its own entries (those running \(shim)) from \(file). Everything else stays as it is, and a backup is saved first."
     }
 }
 
