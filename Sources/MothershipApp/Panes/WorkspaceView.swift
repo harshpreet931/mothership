@@ -122,10 +122,14 @@ final class WorkspaceView: NSView {
             }
             let session = model.sessions(on: id).first
             // Browser panes bring their own toolbar; only terminals get the hover capsule.
+            let pullRequest = model.pullRequest(for: workspace.id)
+            let task = model.task(for: workspace.id)
+            let compareTask = (task?.runs.count ?? 0) > 1 ? task?.id : nil
             let chrome = surface.kind == .terminal
                 ? PaneChromeModel(
                     title: session?.title ?? surface.meaningfulTitle ?? PathDisplay.short(surface.cwd ?? workspace.currentDirectory),
-                    session: session, pinned: session.map { $0.state.isWorking || $0.needsYou } ?? false
+                    session: session, pinned: session.map { $0.state.isWorking || $0.needsYou } ?? false || pullRequest != nil,
+                    pullRequest: pullRequest, compareTask: compareTask
                 )
                 : nil
             let workspaceID = workspace.id
@@ -141,6 +145,12 @@ final class WorkspaceView: NSView {
                     onSplitDown: { [weak model] in model?.split(id, direction: .down) },
                     onClose: { [weak model] in
                         if model?.workspace(id: workspaceID) != nil { model?.closeSurface(id) }
+                    },
+                    onOpenPullRequest: { [weak model] in
+                        if let status = model?.pullRequest(for: workspaceID) { model?.openPullRequest(status, in: workspaceID) }
+                    },
+                    onCompare: { [weak model] in
+                        if let task = model?.task(for: workspaceID) { model?.openCompare(task.id) }
                     }
                 )
             )

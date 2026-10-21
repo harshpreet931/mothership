@@ -99,6 +99,17 @@ final class AppModel {
     var composerFocusRequest = 0
     /// The composer is a slim pill until clicked or ⌘L; Esc folds it back.
     var isComposerExpanded = false
+    /// The New Task sheet, while it's open.
+    var newTaskDraft: NewTaskDraft?
+    /// The task on the Compare page and the run on the Diff page.
+    var compareTaskID: UUID?
+    var diffRunID: UUID?
+    /// Where the Diff page's back button goes.
+    @ObservationIgnored var diffReturnScreen: AppScreen = .workspaces
+    /// Task groups folded in the sidebar.
+    var collapsedTasks: Set<UUID> = []
+    /// Demo fixtures: unified diff text for a run when the backend has none.
+    @ObservationIgnored var diffFixture: ((TaskRun.ID) -> String?)?
     /// Sessions whose permission was just decided from the UI, shown as a ✓ for a moment.
     var recentlyResolved: [AgentSessionKey: PermissionDecisionKind] = [:]
     /// Supplies listening ports (SystemProbe in the real app, fixtures in demo mode).

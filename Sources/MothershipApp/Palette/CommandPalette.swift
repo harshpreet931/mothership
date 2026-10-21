@@ -3,11 +3,12 @@ import SwiftUI
 
 struct PaletteItem: Identifiable {
     enum Section: Int, Comparable {
-        case agents, workspaces, actions
+        case agents, tasks, workspaces, actions
 
         var title: String {
             switch self {
             case .agents: "Agents"
+            case .tasks: "Tasks"
             case .workspaces: "Workspaces"
             case .actions: "Actions"
             }
@@ -303,6 +304,26 @@ struct CommandPaletteView: View {
                     .init(title: "Close", symbol: "xmark") { [model] in model.closeWorkspace(id) },
                 ]
             ))
+        }
+        for task in model.tasks {
+            let id = task.id
+            let repo = (task.repoRoot as NSString).lastPathComponent
+            let runActions: [PaletteItem.Action] = task.runs.filter { $0.outcome != .discarded }.map { run in
+                .init(title: "View \(run.agent.shortName)'s diff", symbol: "plusminus") { [model] in model.openDiff(run.id) }
+            }
+            if task.runs.count > 1 {
+                items.append(PaletteItem(
+                    id: "task:\(id)", section: .tasks, title: "Compare runs · " + task.title,
+                    subtitle: "Best of \(task.runs.count) · \(repo) · \(model.phase(of: task).label)",
+                    icon: .symbol("square.split.3x1"), perform: { [model] in model.openCompare(id) }, actions: runActions
+                ))
+            } else if let run = task.runs.first {
+                items.append(PaletteItem(
+                    id: "task:\(id)", section: .tasks, title: task.title,
+                    subtitle: "\(run.agent.shortName) · \(repo) · \(model.phase(of: run).label)",
+                    icon: .symbol("sparkles"), perform: { [model] in model.selectWorkspace(run.workspaceID) }, actions: runActions
+                ))
+            }
         }
         return items + actions
     }

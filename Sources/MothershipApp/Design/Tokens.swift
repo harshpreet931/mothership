@@ -70,6 +70,16 @@ enum Sky {
     /// Switches: ink track by Day, a calm blue at night (white on white reads as off).
     static let accentToggle = Color(nsColor: .skyAccentToggle)
 
+    // MARK: Diffs (the diff viewer is a document, so it alone gets a calm sage for
+    // additions; everywhere else stats stay ink)
+
+    static let diffAddFill = Color(nsColor: .skyDiffAddFill)
+    static let diffAddMark = Color(nsColor: .skyDiffAddMark)
+    static let diffRemoveFill = Color(nsColor: .skyDiffRemoveFill)
+    static let diffRemoveMark = Color(nsColor: .skyDiffRemoveMark)
+    /// Search matches in the diff viewer.
+    static let findMatch = Color(nsColor: .skyFindMatch)
+
     // MARK: Motion
 
     static let spring = Animation.spring(response: 0.32, dampingFraction: 0.86)
@@ -107,6 +117,11 @@ extension NSColor {
     static let skyOnSelection = NSColor.white
     static let skyCardStroke = dynamic(light: rgb(0x0D0E11, 0.06), dark: rgb(0xFFFFFF, 0.08))
     static let skyAccentToggle = dynamic(light: rgb(0x0D0E11), dark: rgb(0x5B7CF0))
+    static let skyDiffAddFill = dynamic(light: rgb(0x2E9A6F, 0.09), dark: rgb(0x4CC495, 0.11))
+    static let skyDiffAddMark = dynamic(light: rgb(0x2A8763), dark: rgb(0x67CFA6))
+    static let skyDiffRemoveFill = dynamic(light: rgb(0xE5484D, 0.07), dark: rgb(0xF2555A, 0.1))
+    static let skyDiffRemoveMark = dynamic(light: rgb(0xC9373C), dark: rgb(0xF27A7E))
+    static let skyFindMatch = dynamic(light: rgb(0xFF7A1A, 0.28), dark: rgb(0xFF8A33, 0.34))
     /// Solid stand-in for glass under Reduce Transparency.
     static let skySolidPanel = dynamic(light: rgb(0xF4F6F9), dark: rgb(0x1D1F25))
 
