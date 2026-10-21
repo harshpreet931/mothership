@@ -254,6 +254,26 @@ extension AppModel {
         if remaining != composerQueue { composerQueue = remaining }
     }
 
+    // MARK: Composer pill
+
+    /// Whether the composer shows at all: the pill (Settings → Composer), or open from ⌘L.
+    var composerShown: Bool {
+        screen != .settings && (isComposerVisible || isComposerExpanded)
+    }
+
+    /// Opens the composer and puts the caret in it (click, ⌘L, "Start a task").
+    func openComposer() {
+        withAnimationIfAllowed { isComposerExpanded = true }
+        composerFocusRequest += 1
+    }
+
+    /// Folds the composer back into its pill; keys go back to the pane.
+    func closeComposer(refocusPane: Bool = true) {
+        guard isComposerExpanded else { return }
+        withAnimationIfAllowed { isComposerExpanded = false }
+        if refocusPane, screen == .workspaces, let surface = focusedSurface?.id { requestFocus(surface) }
+    }
+
     // MARK: Onboarding
 
     /// First run: agents are on this Mac but none is connected yet. The card goes away by

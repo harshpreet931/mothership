@@ -196,8 +196,7 @@ final class CommandRouter: NSObject, NSMenuItemValidation {
         case .home: model.toggleHome()
         case .fleet: model.show(model.screen == .fleet ? .workspaces : .fleet)
         case .toggleComposer:
-            withAnimationIfAllowed { model.isComposerVisible.toggle() }
-            if model.isComposerVisible { model.composerFocusRequest += 1 }
+            if model.isComposerExpanded { model.closeComposer() } else { model.openComposer() }
         case .toggleSidebar: windowController?.toggleSidebar()
         case .commandPalette: model.isPalettePresented.toggle()
         case .settings: openSettings()
@@ -239,7 +238,7 @@ final class CommandRouter: NSObject, NSMenuItemValidation {
             item.state = model.screen == .fleet ? .on : .off
             return true
         case .toggleComposer:
-            item.title = model.isComposerVisible ? "Hide Composer" : "Show Composer"
+            item.title = model.isComposerExpanded ? "Close Composer" : "Open Composer"
             return true
         case .clearScreen:
             // Only the pane you can see, and never from under the palette.

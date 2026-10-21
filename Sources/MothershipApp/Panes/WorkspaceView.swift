@@ -111,7 +111,9 @@ final class WorkspaceView: NSView {
         let background = model.runtime.backgroundColor
         let dark = model.chromeIsDark
         let tint = model.tintWithSky
+        let clearance = model.composerShown ? Sky.composerClearance : 0
         for (id, container) in containers {
+            container.bottomClearance = clearance
             guard let surface = workspace.surfaces[id] else { continue }
             if container.content !== surface.contentView { container.setContent(surface.contentView) }
             let isFocused = id == focused

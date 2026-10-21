@@ -52,6 +52,11 @@ final class PaneContainerView: NSView {
     private var terminalIsDark = true
     /// Terminal panes (those with chrome) reserve the status strip; browsers bring a toolbar.
     private var reservesStatusStrip = false
+    /// Clear margin kept at the bottom when this card sits on the canvas's bottom edge, so
+    /// the floating composer never covers content.
+    var bottomClearance: CGFloat = 0 {
+        didSet { if bottomClearance != oldValue { needsLayout = true } }
+    }
 
     init(surfaceID: SurfaceID) {
         self.surfaceID = surfaceID
@@ -145,7 +150,8 @@ final class PaneContainerView: NSView {
         let banner = bannerHost == nil ? 0 : ResumeBanner.height + 8
         bannerHost?.frame = NSRect(x: 0, y: strip + 2, width: bounds.width, height: ResumeBanner.height)
         let top = strip + banner
-        content?.frame = NSRect(x: 0, y: top, width: bounds.width, height: max(0, bounds.height - top))
+        let bottom = touchesCanvasBottom ? bottomClearance : 0
+        content?.frame = NSRect(x: 0, y: top, width: bounds.width, height: max(0, bounds.height - top - bottom))
         dimView.frame = clipView.bounds
         let path = CGPath(roundedRect: bounds, cornerWidth: Self.cornerRadius, cornerHeight: Self.cornerRadius, transform: nil)
         elevationLayer.frame = bounds
@@ -161,6 +167,19 @@ final class PaneContainerView: NSView {
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         needsLayout = true
+    }
+
+    override func setFrameOrigin(_ newOrigin: NSPoint) {
+        super.setFrameOrigin(newOrigin)
+        needsLayout = true
+    }
+
+    /// Whether this card's bottom edge is the workspace's bottom edge (bottom row).
+    private var touchesCanvasBottom: Bool {
+        var view = superview
+        while let candidate = view, !(candidate is WorkspaceView) { view = candidate.superview }
+        guard let workspace = view else { return false }
+        return convert(bounds, to: workspace).maxY >= workspace.bounds.maxY - 2
     }
 
     override func viewDidChangeEffectiveAppearance() {

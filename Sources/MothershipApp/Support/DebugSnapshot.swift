@@ -33,10 +33,16 @@ enum DebugSnapshot {
             case "home": model.show(.home)
             case "fleet": model.show(.fleet)
             case "palette": model.isPalettePresented = true
+            case "composer": model.openComposer()
             case "settings": model.openSettings(parts.count > 1 ? SettingsTab(rawValue: parts[1]) : .agents)
             case "toasts":
-                // Stand-in attention events from whatever sessions exist, to check the stack.
-                for session in model.sessions.filter({ $0.needsYou || $0.state.isError }).prefix(3).reversed() {
+                // Stand-in attention events from whatever sessions exist, plus a finished
+                // one written in Markdown, to check the dock.
+                model.enqueueToast(AttentionEvent(
+                    kind: .finished, session: nil, surface: model.focusedSurface?.id, title: "Claude · Rate limiter fix",
+                    body: "## Done\n- **Retries** now reuse the original token\n- Tests pass (`pnpm test`)", shouldNotify: true
+                ))
+                for session in model.sessions.filter({ $0.needsYou || $0.state.isError }).prefix(2).reversed() {
                     let kind: AttentionEvent.Kind = session.pendingPermission.map { .permission($0) } ?? (session.state.isError ? .failed : .needsInput)
                     model.enqueueToast(AttentionEvent(
                         kind: kind, session: session.id, surface: session.surface,

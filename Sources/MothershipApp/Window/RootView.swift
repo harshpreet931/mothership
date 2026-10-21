@@ -86,17 +86,25 @@ final class RootView: NSView {
         let sidebarAllowed = screen == .workspaces || screen == .fleet
         let docked = sidebarAllowed && !model.isSidebarCollapsed
         let sidebarVisible = docked || (sidebarAllowed && peeking)
-        let composerVisible = model.isComposerVisible && screen != .settings
-        let bottom = composerVisible ? 44 + gutter * 2 : gutter
+        // The composer floats over the bottom gutter; it never takes height from panes
+        // (bottom-row cards keep a clear margin under it instead). Home keeps a band.
+        let composerShown = model.composerShown
+        let bottom = gutter
         let left = docked ? gutter * 2 + Sky.sidebarWidth : gutter
 
         let sidebarX = sidebarVisible ? gutter : -Sky.sidebarWidth - gutter
         let sidebar = NSRect(x: sidebarX, y: top, width: Sky.sidebarWidth, height: max(0, size.height - top - gutter))
         let content = NSRect(x: left, y: top, width: max(0, size.width - left - gutter), height: max(0, size.height - top - bottom))
-        let composerLeft = screen == .home ? 0 : left
-        let composer = NSRect(x: composerLeft, y: size.height - gutter - 44, width: size.width - composerLeft - (screen == .home ? 0 : gutter), height: 44)
+        let area = screen == .home ? NSRect(x: 0, y: 0, width: size.width, height: size.height) : content
+        let expanded = model.isComposerExpanded
+        let composerWidth = min(expanded ? 640 : 300, max(160, area.width - 48))
+        let composerHeight: CGFloat = expanded ? Sky.composerHeight : Sky.composerPillHeight
+        let composer = NSRect(
+            x: (area.midX - composerWidth / 2).rounded(), y: size.height - Sky.composerBottom - composerHeight,
+            width: composerWidth, height: composerShown ? composerHeight : 0
+        )
         let screenFrame: NSRect = switch screen {
-        case .home: NSRect(x: 0, y: top, width: size.width, height: max(0, size.height - top - bottom))
+        case .home: NSRect(x: 0, y: top, width: size.width, height: max(0, size.height - top - (composerShown ? Sky.composerClearance + gutter : bottom)))
         case .settings: NSRect(x: 0, y: top, width: size.width, height: max(0, size.height - top))
         case .fleet, .workspaces: content
         }
@@ -163,9 +171,11 @@ final class RootView: NSView {
         let showPanes = screen == .workspaces && !model.workspaces.isEmpty
         canvas.isHidden = !showPanes
         screenHost.isHidden = screen == .workspaces && !model.workspaces.isEmpty
-        composerHost.isHidden = !(model.isComposerVisible && screen != .settings)
+        _ = model.isComposerExpanded
+        composerHost.isHidden = !model.composerShown
         toastHost.isHidden = model.toasts.isEmpty || screen == .settings
         _ = model.toasts.count
+        layoutToasts()
 
         let sky = model.skyState
         skyView.apply(sky, animated: true)
@@ -302,7 +312,7 @@ struct EmptyStateView: View {
                 .font(Sky.Font.serifL)
                 .foregroundStyle(Sky.ink)
             HStack(spacing: 8) {
-                Button("Start a task") { model.composerFocusRequest += 1 }
+                Button("Start a task") { model.openComposer() }
                     .buttonStyle(InkCapsuleStyle(height: 32))
                 Button("New workspace") { model.createWorkspace() }
                     .buttonStyle(SecondaryPillStyle(height: 32))

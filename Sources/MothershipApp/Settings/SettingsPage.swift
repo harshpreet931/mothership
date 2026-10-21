@@ -270,7 +270,7 @@ struct AppearanceSettings: View {
                     Toggle("", isOn: Binding(get: { model.tintWithSky }, set: { model.tintWithSky = $0 }))
                         .toggleStyle(.switch).labelsHidden().tint(Sky.accentToggle)
                 }
-                GlassListRow(title: "Composer", subtitle: "The message bar under the panes (⌘L)", showsDivider: false) {
+                GlassListRow(title: "Composer pill", subtitle: "A slim pill at the bottom; ⌘L opens the composer either way", showsDivider: false) {
                     Image(systemName: "text.bubble").font(.system(size: 16)).frame(width: 24).foregroundStyle(Sky.ink.opacity(0.75))
                 } trailing: {
                     Toggle("", isOn: Binding(get: { model.isComposerVisible }, set: { model.isComposerVisible = $0 }))

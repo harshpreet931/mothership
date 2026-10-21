@@ -2,23 +2,79 @@ import AppKit
 import ShipModel
 import SwiftUI
 
-/// The bottom capsule (§6 Composer): talks to the focused pane's agent, or starts a task.
+/// The bottom composer (§6): a slim centered pill ("Message Claude ⌘L") floating over the
+/// bottom gutter until clicked or ⌘L, then a field that talks to the focused pane's agent
+/// or starts a task. Esc, or leaving it empty, folds it back.
 struct ComposerView: View {
     let model: AppModel
     @State private var text = ""
     @FocusState private var focused: Bool
+    @State private var hovering = false
 
     private static let agents: [AgentKind] = [.claude, .codex, .opencode, .gemini]
 
     var body: some View {
+        ZStack {
+            if model.isComposerExpanded {
+                field
+                    .transition(.opacity)
+            } else {
+                pill
+                    .transition(.opacity)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onChange(of: model.composerFocusRequest) { focused = true }
+        .onChange(of: focused) { _, isFocused in
+            // Clicking away from an empty composer folds it.
+            if !isFocused, text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                model.closeComposer(refocusPane: false)
+            }
+        }
+    }
+
+    private var pill: some View {
+        Button { model.openComposer() } label: {
+            HStack(spacing: 8) {
+                AgentMark(kind: model.composerTarget?.kind ?? model.composerAgent, size: 12, color: Sky.secondary)
+                Text(model.composerPlaceholder)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Sky.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                let queued = model.queuedCount(for: model.composerTarget?.surface)
+                if queued > 0 {
+                    Text(verbatim: String(queued) + " queued")
+                        .font(Sky.Font.meta)
+                        .foregroundStyle(Sky.secondary)
+                        .fixedSize()
+                }
+                Text("⌘L")
+                    .font(Sky.Font.meta)
+                    .foregroundStyle(Sky.tertiary)
+                    .fixedSize()
+            }
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(ComposerSurface())
+            .overlay(Capsule().fill(Sky.ink.opacity(hovering ? 0.05 : 0)))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in withAnimation(Sky.hover) { self.hovering = hovering } }
+        .help("Message the focused agent, or start a task (⌘L)")
+        .accessibilityLabel(model.composerPlaceholder)
+    }
+
+    private var field: some View {
         let target = model.composerTarget
         let queued = model.queuedCount(for: target?.surface)
-        HStack(spacing: 10) {
-            AgentMark(kind: target?.kind ?? model.composerAgent, size: 15, color: Sky.secondary)
+        return HStack(spacing: 10) {
+            AgentMark(kind: target?.kind ?? model.composerAgent, size: 14, color: Sky.secondary)
                 .opacity(model.composerBroadcast ? 0.4 : 1)
             TextField(model.composerPlaceholder, text: $text, axis: .horizontal)
                 .textFieldStyle(.plain)
-                .font(.system(size: 14))
+                .font(.system(size: 13.5))
                 .foregroundStyle(Sky.ink)
                 .focused($focused)
                 .onSubmit { send(queue: false) }
@@ -29,10 +85,11 @@ struct ComposerView: View {
                 }
                 .onExitCommand {
                     focused = false
-                    if let surface = model.focusedSurface?.id { model.requestFocus(surface) }
+                    model.closeComposer()
                 }
+                .onAppear { DispatchQueue.main.async { focused = true } }
             if queued > 0 {
-                Text("\(queued) queued")
+                Text(verbatim: String(queued) + " queued")
                     .font(Sky.Font.meta)
                     .foregroundStyle(Sky.secondary)
                     .padding(.horizontal, 8)
@@ -62,7 +119,7 @@ struct ComposerView: View {
                 }
             } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 14, weight: .regular))
+                    .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(Sky.secondary)
                     .frame(width: 26, height: 26)
                     .contentShape(Circle())
@@ -74,7 +131,7 @@ struct ComposerView: View {
             .help("Agent, attachments, broadcast")
             Button(action: dictate) {
                 Image(systemName: "mic")
-                    .font(.system(size: 14, weight: .regular))
+                    .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(Sky.secondary)
                     .frame(width: 26, height: 26)
                     .contentShape(Circle())
@@ -82,13 +139,11 @@ struct ComposerView: View {
             .buttonStyle(.plain)
             .help("Dictate")
         }
-        .padding(.leading, 18)
-        .padding(.trailing, 10)
-        .frame(height: 44)
-        .glassCapsule()
-        .frame(maxWidth: 720)
+        .padding(.leading, 16)
+        .padding(.trailing, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(ComposerSurface())
         .animation(Sky.spring, value: queued)
-        .onChange(of: model.composerFocusRequest) { focused = true }
     }
 
     private func send(queue: Bool) {
@@ -103,5 +158,18 @@ struct ComposerView: View {
         DispatchQueue.main.async {
             NSApp.sendAction(Selector(("startDictation:")), to: nil, from: nil)
         }
+    }
+}
+
+/// Opaque bubble capsule with a hairline and a soft shadow: it floats over the cards'
+/// bottom margin, so it must read on terminal and sky alike.
+private struct ComposerSurface: View {
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        Capsule(style: .continuous)
+            .fill(Sky.bubble)
+            .overlay(Capsule(style: .continuous).strokeBorder(Sky.cardStroke, lineWidth: 1))
+            .shadow(color: .black.opacity(scheme == .dark ? 0.32 : 0.1), radius: 10, y: 4)
     }
 }

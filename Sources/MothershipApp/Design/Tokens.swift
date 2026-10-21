@@ -13,7 +13,14 @@ enum Sky {
     static let radiusPane: CGFloat = 18
     static let radiusPanel: CGFloat = 24
     static let topBarHeight: CGFloat = 52
-    static let composerBand: CGFloat = 56
+    /// The composer pill (collapsed) and field (open), floating 6 pt above the window's
+    /// bottom edge, over the gutter and the bottom-row cards' clear margin.
+    static let composerPillHeight: CGFloat = 30
+    static let composerHeight: CGFloat = 36
+    static let composerBottom: CGFloat = 6
+    /// Clear margin at the bottom of bottom-row cards while the composer shows. With the
+    /// terminal's own 14 pt bottom padding, glyphs stay above the open field (36 + 6 − 10).
+    static let composerClearance: CGFloat = 22
     static let sidebarWidth: CGFloat = 260
 
     // MARK: Type

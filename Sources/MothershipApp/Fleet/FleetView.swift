@@ -46,7 +46,7 @@ struct FleetView: View {
                     Text(filter == .all ? "No agents yet." : "Nothing here.")
                         .font(Sky.Font.serifL)
                         .foregroundStyle(Sky.ink)
-                    Button("Start a task") { model.composerFocusRequest += 1 }
+                    Button("Start a task") { model.openComposer() }
                         .buttonStyle(InkCapsuleStyle(height: 32))
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

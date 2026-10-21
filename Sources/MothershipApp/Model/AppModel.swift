@@ -92,6 +92,8 @@ final class AppModel {
     var composerBroadcast = false
     /// Bumped to move keyboard focus into the composer (⌘L, "Start a task").
     var composerFocusRequest = 0
+    /// The composer is a slim pill until clicked or ⌘L; Esc folds it back.
+    var isComposerExpanded = false
     /// Sessions whose permission was just decided from the UI, shown as a ✓ for a moment.
     var recentlyResolved: [AgentSessionKey: PermissionDecisionKind] = [:]
     /// Supplies listening ports (SystemProbe in the real app, fixtures in demo mode).
