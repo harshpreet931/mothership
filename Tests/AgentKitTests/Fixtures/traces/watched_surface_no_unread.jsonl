@@ -1,0 +1,8 @@
+# Finishing or failing while the user watches the surface doesn't set unread.
+{"at":0,"tier":"hook","kind":"opencode","session":"ses_1","surface":"B","event":"sessionStart","expect":"idle"}
+{"at":1,"tier":"hook","kind":"opencode","session":"ses_1","event":"prompt","text":"write docs","expect":"working","watched":true}
+{"at":2,"tier":"hook","kind":"opencode","session":"ses_1","event":"stop","expect":"idle","watched":true,"expectUnread":false}
+{"at":3,"tier":"hook","kind":"opencode","session":"ses_1","event":"prompt","text":"again","expect":"working","watched":true}
+{"at":4,"tier":"hook","kind":"opencode","session":"ses_1","event":"failure","text":"rate limit","expect":"error","watched":false,"expectUnread":true}
+{"at":5,"tier":"hook","kind":"opencode","session":"ses_1","event":"usage","input":1000,"output":200,"cacheRead":5000,"cacheWrite":0,"mode":"replace","expect":"error","expectTokens":6200}
+{"at":6,"tier":"hook","kind":"opencode","session":"ses_1","event":"usage","input":100,"output":20,"cacheRead":0,"cacheWrite":0,"mode":"add","expect":"error","expectTokens":6320}
