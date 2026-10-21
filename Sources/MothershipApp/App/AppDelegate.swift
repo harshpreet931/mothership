@@ -21,6 +21,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_: Notification) {
         PreferenceKey.registerDefaults()
+        // Debug aid for snapshots: force light or dark regardless of the system setting.
+        switch environment["MOTHERSHIP_APPEARANCE"] {
+        case "light": NSApp.appearance = NSAppearance(named: .aqua)
+        case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
+        default: break
+        }
         let defaults = UserDefaults.standard
 
         let runtime = TerminalRuntime.shared
@@ -65,6 +71,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { model.isPalettePresented = true }
             }
             DebugSnapshot.schedule(to: path, window: windowController)
+        }
+        // MOTHERSHIP_SNAPSHOT_SETTINGS=/path.png: open Settings (tab index in
+        // MOTHERSHIP_SNAPSHOT_SETTINGS_TAB) and capture it too.
+        if let path = environment["MOTHERSHIP_SNAPSHOT_SETTINGS"], !path.isEmpty {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.showSettings()
+                let tab = Int(self?.environment["MOTHERSHIP_SNAPSHOT_SETTINGS_TAB"] ?? "") ?? 0
+                (self?.settingsController?.window?.contentViewController as? NSTabViewController)?.selectedTabViewItemIndex = tab
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { [weak self] in
+                guard let window = self?.settingsController?.window else { return }
+                let ok = DebugSnapshot.captureContent(of: window, to: URL(fileURLWithPath: path))
+                NSLog("Mothership: settings snapshot %@", ok ? path : "failed")
+            }
         }
         // MOTHERSHIP_DEBUG_INPUT="cmd": pasted + Enter into the focused pane after launch; the
         // pane's screen text is logged with the snapshot (exercises paste/sendKey/readScreen).
@@ -119,7 +139,8 @@ enum DemoSeed {
         }
         let (main, _) = model.createWorkspace(cwd: home, name: "mothership", focus: true, insertAfterSelection: false)
         main.colorHex = "7C8CFF"
-        model.split(direction: .right, focus: false)
+        // Focus the right pane so the left one (Claude, waiting on a permission) glows.
+        main.focusedSurfaceID = model.split(direction: .right, focus: false)?.id
         let (web, _) = model.createWorkspace(cwd: existing(home + "/Desktop"), name: "web-dashboard", focus: false, insertAfterSelection: false)
         _ = web
         let (infra, _) = model.createWorkspace(cwd: existing(home + "/Documents"), name: "infra", focus: false, insertAfterSelection: false)

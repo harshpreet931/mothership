@@ -88,8 +88,9 @@ struct GeneralSettingsView: View {
                     }
                 }
                 .onChange(of: themeChoice) { _, choice in apply(choice) }
-                TextField("Search 480+ themes", text: $themeQuery)
+                TextField("Search themes", text: $themeQuery, prompt: Text("Search \(TerminalRuntime.availableThemeNames.count) themes"))
                     .textFieldStyle(.roundedBorder)
+                    .labelsHidden()
                 ThemeGrid(query: themeQuery, selection: $themeChoice)
                     .frame(height: 220)
             }

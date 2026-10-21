@@ -34,6 +34,10 @@ struct SidebarView: View {
                 .animation(.snappy(duration: 0.25), value: model.workspaces.map(\.id))
             }
             .scrollIndicators(.never)
+            .onContinuousHover { _ in
+                // A drag that ended outside any row never calls performDrop.
+                if dragging != nil, NSEvent.pressedMouseButtons == 0 { dragging = nil }
+            }
             FleetFooter(model: model)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

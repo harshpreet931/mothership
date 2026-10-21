@@ -30,6 +30,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, AppWindo
         window.contentViewController = root
         window.setFrameAutosaveName("")
         super.init(window: window)
+        // Keep the restored frame exactly; there is only ever one main window.
+        shouldCascadeWindows = false
         window.delegate = self
 
         if let frame, frame.count == 4 {
@@ -46,6 +48,31 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, AppWindo
         }
         model.host = self
         router.windowController = self
+        installPaneClickMonitor()
+    }
+
+    private var clickMonitor: Any?
+
+    /// Terminals report focus themselves; other panes (browser) don't, so a click anywhere
+    /// in a pane makes it the workspace's focused pane.
+    private func installPaneClickMonitor() {
+        clickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+            MainActor.assumeIsolated {
+                guard let self, let window = self.window, event.window === window,
+                      let contentView = window.contentView,
+                      let hit = contentView.hitTest(contentView.convert(event.locationInWindow, from: nil))
+                else { return }
+                var view: NSView? = hit
+                while let current = view, !(current is PaneContainerView) { view = current.superview }
+                guard let pane = view as? PaneContainerView,
+                      self.model.surface(pane.surfaceID)?.kind != .terminal else { return }
+                self.model.surfaceDidFocus(pane.surfaceID)
+                if let content = pane.content, !(window.firstResponder.map { ($0 as? NSView)?.isDescendant(of: content) ?? false } ?? false) {
+                    window.makeFirstResponder(content)
+                }
+            }
+            return event
+        }
     }
 
     @available(*, unavailable)

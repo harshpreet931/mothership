@@ -70,7 +70,9 @@ enum PathDisplay {
     }
 
     static func folderName(_ path: String) -> String {
+        if path == home { return "Home" }
+        if path == "/" { return "Root" }
         let name = URL(fileURLWithPath: path).lastPathComponent
-        return path == home ? "Home" : (name.isEmpty ? path : name)
+        return name.isEmpty ? path : name
     }
 }

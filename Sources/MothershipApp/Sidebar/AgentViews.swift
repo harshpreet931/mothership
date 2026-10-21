@@ -177,7 +177,7 @@ struct PermissionCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 4)
-                .background(Color.black.opacity(0.22), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                .background(Palette.codeWell, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
                 .help(request.detail ?? request.summary)
             HStack(spacing: 6) {
                 Button(action: onDeny) {

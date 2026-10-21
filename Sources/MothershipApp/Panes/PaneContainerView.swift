@@ -11,7 +11,7 @@ final class PaneContainerView: NSView {
     static let bannerHeight: CGFloat = 38
 
     let surfaceID: SurfaceID
-    private let clipView = NSView()
+    private let clipView = FlippedView()
     private let glowLayer = CAShapeLayer()
     private let dimView = PassthroughView()
     private let progressLayer = CALayer()
@@ -205,6 +205,11 @@ final class PaneContainerView: NSView {
 /// Draws but never takes clicks.
 final class PassthroughView: NSView {
     override func hitTest(_: NSPoint) -> NSView? { nil }
+}
+
+/// Top-left origin, so the banner sits at the top and content below it.
+final class FlippedView: NSView {
+    override var isFlipped: Bool { true }
 }
 
 /// "Resume Claude Code session?" strip at the top of a restored pane.

@@ -10,6 +10,10 @@ enum Palette {
     static let attention = Color(nsColor: .attentionShip)
     static let success = Color(red: 0.36, green: 0.80, blue: 0.52)
     static let failure = Color(red: 0.95, green: 0.38, blue: 0.38)
+    /// Inset behind inline code (commands in permission cards).
+    static let codeWell = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.isDark ? NSColor.black.withAlphaComponent(0.24) : NSColor.black.withAlphaComponent(0.055)
+    })
 
     static func agentColor(_ kind: AgentKind) -> Color {
         Color(nsColor: agentNSColor(kind))

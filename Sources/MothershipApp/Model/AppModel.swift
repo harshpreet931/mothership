@@ -396,8 +396,13 @@ final class AppModel {
     }
 
     func resolvePermission(_ request: PermissionRequest, decision: PermissionDecision) {
+        resolvePermission(id: request.id, decision: decision)
+    }
+
+    /// For notification actions, which carry only the request ID.
+    func resolvePermission(id: PermissionRequestID, decision: PermissionDecision) {
         let engine = self.engine
-        Task { await engine.resolvePermission(request.id, decision: decision) }
+        Task { await engine.resolvePermission(id, decision: decision) }
     }
 
     /// Restore banner → paste the agent's resume command into the pane and press Enter.
@@ -541,7 +546,8 @@ final class AppModel {
                 if focused { self?.surfaceDidFocus(id) }
             }
             terminal.onClose = { [weak self] _ in
-                self?.closeSurface(id)
+                // Not from inside Ghostty's close callback: closing frees the surface.
+                DispatchQueue.main.async { self?.closeSurface(id) }
             }
             terminal.onOpenURL = { [weak self] url in
                 guard let self, url.scheme == "http" || url.scheme == "https",

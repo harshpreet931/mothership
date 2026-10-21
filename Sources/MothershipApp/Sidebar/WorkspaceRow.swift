@@ -78,6 +78,12 @@ struct WorkspaceRow: View {
                         draftName = workspace.name
                         renameFocused = true
                     }
+                    .onChange(of: renameFocused) { _, focused in
+                        // Clicking away commits, like Finder.
+                        if !focused, model.renamingWorkspaceID == workspace.id {
+                            model.rename(workspace.id, to: draftName)
+                        }
+                    }
             } else {
                 Text(workspace.name)
                     .font(.system(size: 13, weight: .semibold))

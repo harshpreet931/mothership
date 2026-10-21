@@ -71,6 +71,11 @@ final class WorkspaceView: NSView {
         root = view
         needsLayout = true
         layoutSubtreeIfNeeded()
+        // Re-parenting panes drops keyboard focus; hand it back to the focused pane.
+        if model.selectedWorkspace?.id == workspace.id, let focused = workspace.focusedSurface?.id,
+           !model.isPalettePresented, model.renamingWorkspaceID == nil {
+            model.requestFocus(focused)
+        }
     }
 
     private func build(_ node: PaneNode, path: [Int]) -> NSView {

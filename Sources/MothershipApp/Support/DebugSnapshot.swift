@@ -94,6 +94,15 @@ enum DebugSnapshot {
         }
     }
 
+    /// Plain `cacheDisplay` capture of any window's content (Settings).
+    static func captureContent(of window: NSWindow, to url: URL) -> Bool {
+        guard let contentView = window.contentView,
+              let rep = contentView.bitmapImageRepForCachingDisplay(in: contentView.bounds) else { return false }
+        contentView.cacheDisplay(in: contentView.bounds, to: rep)
+        guard let png = rep.representation(using: .png, properties: [:]) else { return false }
+        return (try? png.write(to: url)) != nil
+    }
+
     /// The traffic lights live outside contentView; draw them where AppKit put them.
     private static func drawWindowButtons(window: NSWindow, in contentView: NSView) {
         let buttons: [(NSWindow.ButtonType, NSColor)] = [
