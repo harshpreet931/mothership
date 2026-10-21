@@ -1,72 +1,74 @@
 import ShipModel
 
 enum Help {
+    private typealias Row = (command: String, arguments: String, summary: String)
+
+    private static let sections: [(title: String, rows: [Row], note: String?)] = [
+        ("PANES & WORKSPACES", [
+            ("split", "[-- COMMAND…]", "Open a terminal pane beside this one (--down, --cwd DIR, --focus)"),
+            ("split", "--browser URL", "Open a browser pane beside this one"),
+            ("new", "[-- COMMAND…]", "Create a workspace tab (--name NAME, --cwd DIR, --background)"),
+            ("focus", "SURFACE", "Bring a pane to the front"),
+            ("send", "TEXT|-", "Paste text into a pane (--surface ID, --submit; - reads stdin)"),
+            ("screen", "", "Print a pane's visible text (--surface ID, --lines N)"),
+        ], nil),
+        ("BROWSER", [
+            ("open", "URL", "Open URL in this workspace's browser pane (--split, --new-workspace)"),
+            ("browser snapshot", "", "Page outline with element refs like [ref=e12]"),
+            ("browser click", "REF", "Click by ref or CSS selector"),
+            ("browser fill", "REF TEXT", "Set a field the way a user would, React-safe (--submit)"),
+            ("browser eval", "JS|-", "Run JavaScript and print the result as JSON"),
+            ("browser console", "", "Console output, exceptions, failed requests (--errors, --json)"),
+            ("browser screenshot", "", "Save a PNG of the pane and print its path"),
+        ], "Browser commands act on this workspace's browser pane; --browser ID picks another."),
+        ("AGENTS & ATTENTION", [
+            ("status", "", "Every agent session: workspace, state, cwd, summary (--json)"),
+            ("notify", "TITLE [BODY]", "A notification that opens this pane when clicked"),
+            ("hook", "AGENT EVENT [JSON]", "Forward an agent hook event (what agent configs run)"),
+            ("mcp", "", "MCP server giving agents Mothership's tools (stdio)"),
+        ], nil),
+        ("OTHER", [
+            ("ping", "[-q]", "Check that Mothership is running"),
+            ("version", "", "Print the version"),
+            ("help", "[COMMAND]", "Options and examples for one command"),
+        ], nil),
+    ]
+
     static func overview(_ style: Style) -> String {
-        let h = style.bold
-        let c = style.cyan
-        let d = style.dim
-        return """
-        \(h("mship")) \(d("— drive Mothership from your shell, scripts, hooks and agents"))
+        let width = sections.flatMap(\.rows).map { $0.command.count + ($0.arguments.isEmpty ? 0 : $0.arguments.count + 1) }.max() ?? 20
+        var text = style.bold("mship") + " " + style.dim("— drive Mothership from your shell, scripts, hooks and agents") + "\n\n"
+        text += style.bold("USAGE") + "\n  mship <command> [options]\n"
+        for section in sections {
+            text += "\n" + style.bold(section.title) + "\n"
+            for row in section.rows {
+                let plain = row.command + (row.arguments.isEmpty ? "" : " " + row.arguments)
+                let shown = style.cyan(row.command) + (row.arguments.isEmpty ? "" : " " + row.arguments)
+                text += "  " + shown + String(repeating: " ", count: width - plain.count + 3) + row.summary + "\n"
+            }
+            if let note = section.note { text += "  " + style.dim(note) + "\n" }
+        }
+        text += """
 
-        \(h("USAGE"))
-          mship <command> [options]
+            \(style.bold("EXAMPLES"))
+              mship split --down -- npm run dev
+              mship open localhost:3000
+              mship new --name auth-fix --cwd ~/src/api -- claude "fix the failing auth tests"
+              long-job && mship notify "Deploy finished" "api is live on staging"
+              claude mcp add mothership -- mship mcp
 
-        \(h("PANES & WORKSPACES"))
-          \(c("split")) [--right|--down|--left|--up] [--cwd DIR] [--focus] [-- COMMAND…]
-                              Open a terminal pane beside this one, optionally running COMMAND
-          \(c("split --browser")) URL     Open a browser pane beside this one
-          \(c("new")) [--name NAME] [--cwd DIR] [--background] [-- COMMAND…]
-                              Create a workspace (a vertical tab)
-          \(c("focus")) SURFACE           Bring a pane to the front
-          \(c("send")) [--surface ID] [--submit] TEXT|-
-                              Paste text into a pane (this one by default; - reads stdin)
-          \(c("screen")) [--surface ID] [--lines N]
-                              Print a pane's visible text, plus N lines of scrollback
+            \(style.bold("ENVIRONMENT"))
+              MOTHERSHIP_SOCKET          Control socket (set in every Mothership shell)
+              MOTHERSHIP_SURFACE_ID      This pane: the default target of most commands
+              MOTHERSHIP_WORKSPACE_ID    This workspace: the default scope of agents' MCP tools
+              MOTHERSHIP_DEBUG=1         Explain why a hook exited silently
+              NO_COLOR                   Disable colors
 
-        \(h("BROWSER"))
-          \(c("open")) URL [--split|--new-workspace]
-                              Open URL in this workspace's browser pane (localhost:3000 works)
-          \(c("browser snapshot"))            Page outline with element refs ([ref=e12])
-          \(c("browser click")) REF           Click by ref or CSS selector
-          \(c("browser fill")) REF TEXT [--submit]
-                              Set a field's value the way a user would (React-safe)
-          \(c("browser eval")) JS|-          Run JavaScript and print the result as JSON
-          \(c("browser console")) [--errors] [--json]
-                              Console messages, exceptions and failed requests
-          \(c("browser screenshot"))          Save a PNG of the pane and print its path
-                              All browser commands take --browser ID to pick a pane.
+            \(style.bold("EXIT STATUS"))
+              0 ok · 1 Mothership reported an error · 2 usage error · 3 Mothership isn't running
+              \(style.dim("`mship hook` exits 0 whenever anything goes wrong, so it never blocks an agent."))
 
-        \(h("AGENTS & ATTENTION"))
-          \(c("status")) [--json]             Every agent session: workspace, state, cwd, summary
-          \(c("notify")) TITLE [BODY]         Show a notification that opens this pane when clicked
-          \(c("hook")) AGENT EVENT [JSON]     Forward an agent hook event (stdin or JSON argument);
-                              installed into agent configs by Mothership, with consent
-          \(c("mcp"))                         Serve Mothership's tools to an agent over MCP (stdio)
-
-        \(h("OTHER"))
-          \(c("ping")) [-q]                   Check that Mothership is running
-          \(c("version"))                     Print the version
-          \(c("help")) [COMMAND]              Show help for a command
-
-        \(h("EXAMPLES"))
-          mship split --down -- npm run dev
-          mship open localhost:3000
-          mship new --name auth-fix --cwd ~/src/api -- claude "fix the failing auth tests"
-          long-job && mship notify "Deploy finished" "api is live on staging"
-          mship status
-          claude mcp add mothership -- mship mcp
-
-        \(h("ENVIRONMENT"))
-          MOTHERSHIP_SOCKET          Control socket (set in every Mothership shell)
-          MOTHERSHIP_SURFACE_ID      This pane, the default target of most commands
-          MOTHERSHIP_WORKSPACE_ID    This workspace, the default scope for agents' MCP tools
-          NO_COLOR                   Disable colors; MOTHERSHIP_DEBUG=1 explains silent hook exits
-
-        \(h("EXIT STATUS"))
-          0 ok · 1 Mothership reported an error · 2 usage error · 3 Mothership isn't running
-          \(d("`mship hook` exits 0 whenever anything goes wrong, so it can never block an agent."))
-
-        """
+            """
+        return text
     }
 
     static let commands: [String: String] = [
