@@ -1,0 +1,57 @@
+{
+  "env": {
+    "EXAMPLE_FLAG": "1"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git status)",
+      "Read(~/notes/**)"
+    ],
+    "defaultMode": "default"
+  },
+  "model": "opus",
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/bin/sh -c '[ -x \"$HOME/.island/bin/bridge\" ] && \"$HOME/.island/bin/bridge\" --source claude; exit 0'"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/Users/example/Library/Application Support/Relay/bin/relay' --provider claude --event PermissionRequest",
+            "timeout": 65,
+            "statusMessage": "Relaying agent activity locally"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo \"stopped — ✓\" >> /tmp/example.log",
+            "timeout": 4
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/statusline.sh"
+  },
+  "enabledPlugins": {},
+  "effortLevel": "high",
+  "ratio": 1.50
+}

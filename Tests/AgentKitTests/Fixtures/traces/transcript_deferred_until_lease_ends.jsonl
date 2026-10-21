@@ -1,0 +1,11 @@
+# Event-driven lower tiers (transcripts, status files) that land inside a lease are deferred
+# and applied when it ends — unless a newer hook superseded them. Stale evidence is ignored.
+{"at":0,"tier":"hook","kind":"codex","session":"c-7","pid":71,"event":"stop","text":"Done.","expect":"idle"}
+{"at":3,"tier":"transcript","kind":"codex","session":"c-7","event":"observed","state":"working","expect":"idle"}
+{"at":11,"event":"tick","expectKey":"codex/c-7","expect":"working"}
+{"at":20,"tier":"hook","kind":"codex","session":"c-7","event":"stop","expect":"idle"}
+{"at":22,"tier":"transcript","kind":"codex","session":"c-7","event":"observed","state":"working","expect":"idle"}
+{"at":24,"tier":"hook","kind":"codex","session":"c-7","event":"stop","expect":"idle"}
+{"at":35,"event":"tick","expectKey":"codex/c-7","expect":"idle"}
+{"at":40,"ts":15,"tier":"transcript","kind":"codex","session":"c-7","event":"observed","state":"working","expect":"idle"}
+{"at":41,"tier":"transcript","kind":"codex","session":"c-7","event":"observed","state":"working","expect":"working"}

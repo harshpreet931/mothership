@@ -1,0 +1,9 @@
+# Process exit and SessionEnd always win, even over a fresh hook lease or a pending permission.
+# An ended session only comes back through SessionStart (e.g. `codex resume`).
+{"at":0,"tier":"hook","kind":"codex","session":"c-1","pid":700,"event":"permission","tool":"Bash","summary":"rm -rf build","expect":"needsInput:permission"}
+{"at":1,"tier":"process","kind":"codex","pid":700,"event":"processExited","expect":"ended","expectKey":"codex/c-1"}
+{"at":2,"tier":"hook","kind":"codex","session":"c-1","event":"prompt","text":"again","expect":"ended"}
+{"at":3,"tier":"transcript","kind":"codex","session":"c-1","event":"observed","state":"working","expect":"ended"}
+{"at":4,"tier":"hook","kind":"codex","session":"c-1","event":"sessionStart","source":"resume","expect":"idle"}
+{"at":5,"tier":"hook","kind":"codex","session":"c-1","event":"prompt","text":"continue","expect":"working"}
+{"at":6,"tier":"hook","kind":"codex","session":"c-1","event":"sessionEnd","expect":"ended"}

@@ -1,0 +1,38 @@
+{
+  "description": "User hooks including a local session bridge.",
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "command": "'/Users/example/.island/bin/bridge' --source codex",
+            "timeout": 7200,
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "command": "'/Users/example/Library/Application Support/Relay/bin/relay' --provider codex --event PermissionRequest",
+            "statusMessage": "Relaying agent activity locally",
+            "timeout": 4,
+            "type": "command"
+          }
+        ],
+        "matcher": "*"
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "'/Users/example/.island/bin/bridge' --source codex",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      }
+    ]
+  }
+}

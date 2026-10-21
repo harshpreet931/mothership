@@ -1,0 +1,11 @@
+# A fresh hook locks the state for the 10 s lease; heuristic samples inside it are dropped,
+# and after it a heuristic still needs two agreeing samples.
+{"at":0,"tier":"hook","kind":"claude","session":"s-2","pid":500,"event":"prompt","text":"Refactor auth","expect":"working"}
+{"at":1,"tier":"heuristic","heuristic":true,"kind":"claude","session":"s-2","event":"observed","state":"idle","expect":"working"}
+{"at":2,"tier":"heuristic","heuristic":true,"kind":"claude","session":"s-2","event":"observed","state":"idle","expect":"working"}
+{"at":9,"tier":"terminal","kind":"claude","session":"s-2","event":"observed","state":"idle","heuristic":true,"expect":"working"}
+{"at":11,"event":"tick","expectKey":"claude/s-2","expect":"working"}
+{"at":12,"tier":"heuristic","heuristic":true,"kind":"claude","session":"s-2","event":"observed","state":"idle","expect":"working"}
+{"at":13,"tier":"heuristic","heuristic":true,"kind":"claude","session":"s-2","event":"observed","state":"working","expect":"working"}
+{"at":14,"tier":"heuristic","heuristic":true,"kind":"claude","session":"s-2","event":"observed","state":"idle","expect":"working"}
+{"at":15,"tier":"heuristic","heuristic":true,"kind":"claude","session":"s-2","event":"observed","state":"idle","expect":"idle","expectUnread":true}
