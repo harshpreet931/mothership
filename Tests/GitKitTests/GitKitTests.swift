@@ -98,6 +98,22 @@ struct RepoInfoTests {
         }
     }
 
+    @Test func branchesNewestFirst() async throws {
+        let repo = try await TempRepo()
+        defer { repo.remove() }
+        try await repo.run("checkout", "-q", "-b", "feature/older")
+        try await repo.run("checkout", "-q", "main")
+        try await repo.run("checkout", "-q", "-b", "newest")
+        try repo.write("new.txt", "new\n")
+        try await repo.run("add", "-A")
+        // Committer dates have one-second resolution: make "newest" clearly newer.
+        _ = try await Git(environment: TempRepo.environment.merging(["GIT_COMMITTER_DATE": "2099-01-01T00:00:00"]) { $1 })
+            .git(["commit", "-q", "-m", "Newest"], in: repo.root)
+        let branches = try await repo.git.branches(in: repo.root)
+        #expect(branches.first == "newest")
+        #expect(Set(branches) == ["main", "feature/older", "newest"])
+    }
+
     @Test func detachedHeadHasNoBranch() async throws {
         let repo = try await TempRepo()
         defer { repo.remove() }

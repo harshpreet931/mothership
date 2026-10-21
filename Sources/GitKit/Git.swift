@@ -143,6 +143,12 @@ public struct Git: Sendable {
         return (status.tracked, status.untracked)
     }
 
+    /// Local branches, most recently committed first (for a base-branch picker).
+    public func branches(in directory: String) async throws -> [String] {
+        let result = try await git(["for-each-ref", "--sort=-committerdate", "--format=%(refname:short)", "refs/heads"], in: directory)
+        return result.output.split(separator: "\n").map(String.init).filter { !$0.isEmpty }
+    }
+
     public func worktrees(in directory: String) async throws -> [Worktree] {
         GitParsing.worktrees(try await git(["worktree", "list", "--porcelain"], in: directory).output)
     }
