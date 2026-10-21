@@ -59,9 +59,12 @@ final class SkyClock {
         if fresh != sun { sun = fresh }
     }
 
-    private var now: Date {
-        guard let fixedTime else { return Date() }
-        return Calendar.current.date(bySettingHour: fixedTime.hour, minute: fixedTime.minute, second: 0, of: Date()) ?? Date()
+    private var now: Date { pinnedDate ?? Date() }
+
+    /// The pinned time of day (debug), so Home's clock and greeting match the sky.
+    var pinnedDate: Date? {
+        guard let fixedTime else { return nil }
+        return Calendar.current.date(bySettingHour: fixedTime.hour, minute: fixedTime.minute, second: 0, of: Date())
     }
 
     private func updateLocator() {

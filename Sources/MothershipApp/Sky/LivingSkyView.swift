@@ -133,6 +133,8 @@ final class LivingSkyView: NSView {
         let strength = palette.glowStrength
         glow.colors = [palette.glow.cgColor(alpha: strength), palette.glow.cgColor(alpha: strength * 0.42), palette.glow.cgColor(alpha: 0)]
         night.opacity = Float(palette.stars)
+        // The moon waits for real darkness, then comes up with the stars.
+        moon.opacity = Float(min(max((palette.stars - 0.45) / 0.45, 0), 1))
         cloudDeck.opacity = Float(palette.clouds)
         if cloudTint.map({ $0.distance(to: palette.cloudTint) > 0.012 }) ?? true {
             cloudTint = palette.cloudTint
@@ -234,7 +236,9 @@ final class LivingSkyView: NSView {
         let y = size.height * (lift - 0.06)
         glow.bounds = CGRect(x: 0, y: 0, width: size.width * 1.25, height: size.height * (0.9 + lift * 0.4))
         glow.position = CGPoint(x: x, y: y)
-        moon.position = point(size.width * 0.86, fromTop: Sky.topBarHeight + size.height * 0.1)
+        // In the top bar's band, where the sky always shows: behind a card it would
+        // smudge the card's text.
+        moon.position = point((size.width * 0.36).rounded(), fromTop: Sky.topBarHeight / 2 + 1)
     }
 
     // MARK: Pausing
@@ -432,7 +436,7 @@ final class LivingSkyView: NSView {
         guard let context = bitmap(width: side, height: side) else { return nil }
         let center = CGPoint(x: Double(side) / 2, y: Double(side) / 2)
         radial(context, center: center, radius: CGFloat(side) / 2, color: RGB(0xDDE4FF), alphas: [0.34, 0.12, 0.04, 0], locations: [0, 0.2, 0.5, 1])
-        let disc: CGFloat = 24
+        let disc: CGFloat = 20
         context.saveGState()
         context.addEllipse(in: CGRect(x: center.x - disc, y: center.y - disc, width: disc * 2, height: disc * 2))
         context.clip()
@@ -441,8 +445,8 @@ final class LivingSkyView: NSView {
             context.drawLinearGradient(shade, start: CGPoint(x: center.x - disc, y: center.y + disc), end: CGPoint(x: center.x + disc, y: center.y - disc), options: [])
         }
         // Faint maria.
-        context.setFillColor(RGB(0xBFB9AA).cgColor(alpha: 0.22))
-        for (dx, dy, r) in [(-7.0, 6.0, 7.0), (6.0, -4.0, 5.0), (-2.0, -10.0, 4.0), (9.0, 9.0, 3.0)] {
+        context.setFillColor(RGB(0xBFB9AA).cgColor(alpha: 0.16))
+        for (dx, dy, r) in [(-6.0, 5.0, 6.0), (5.0, -3.0, 4.0), (-2.0, -8.0, 3.0), (7.0, 7.0, 2.5)] {
             context.fillEllipse(in: CGRect(x: center.x + dx - r, y: center.y + dy - r, width: r * 2, height: r * 2))
         }
         context.restoreGState()

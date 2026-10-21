@@ -288,7 +288,7 @@ struct ScreenLayer: View {
         ZStack {
             switch model.screen {
             case .home:
-                HomeView(model: model)
+                HomeView(model: model, now: model.skyClock.pinnedDate)
             case .fleet:
                 FleetView(model: model)
             case .settings:
