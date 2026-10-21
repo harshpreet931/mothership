@@ -224,7 +224,7 @@ final class AppModel {
             id: id, name: name ?? PathDisplay.folderName(directory), hasCustomName: name != nil,
             rootDirectory: directory, layout: .leaf(surfaceID)
         )
-        let surface = makeSurface(id: surfaceID, kind: .terminal, workspace: workspace, cwd: directory, initialInput: command)
+        let surface = makeSurface(id: surfaceID, kind: .terminal, workspace: workspace, cwd: directory, startupCommand: command)
         workspace.surfaces[surfaceID] = surface
         workspace.focusedSurfaceID = surfaceID
         workspace.refreshGit()
@@ -339,7 +339,7 @@ final class AppModel {
         let anchorSurface = workspace.surfaces[anchor]
         let directory = Self.resolveDirectory(cwd ?? anchorSurface?.terminal?.workingDirectory ?? anchorSurface?.cwd ?? workspace.rootDirectory)
         let surfaceID = SurfaceID()
-        let surface = makeSurface(id: surfaceID, kind: kind, workspace: workspace, cwd: directory, initialInput: command, url: url)
+        let surface = makeSurface(id: surfaceID, kind: kind, workspace: workspace, cwd: directory, startupCommand: command, url: url)
         workspace.surfaces[surfaceID] = surface
         workspace.zoomedSurfaceID = nil
         workspace.layout = workspace.layout.inserting(surfaceID, beside: anchor, direction: direction)
@@ -597,16 +597,19 @@ final class AppModel {
 
     // MARK: Surfaces
 
+    /// - Parameter startupCommand: Run by the user's login shell, which then stays as an
+    ///   interactive shell in the pane (nothing is typed; see `ShellLaunch`).
     func makeSurface(
-        id: SurfaceID, kind: SurfaceKind, workspace: Workspace, cwd: String?, initialInput: String? = nil,
+        id: SurfaceID, kind: SurfaceKind, workspace: Workspace, cwd: String?, startupCommand: String? = nil,
         url: URL? = nil
     ) -> PaneSurface {
         let surface = PaneSurface(id: id, kind: kind, workspaceID: workspace.id, cwd: cwd, url: url?.absoluteString)
         switch kind {
         case .terminal:
+            let launch = Self.terminalLaunch(startupCommand, environment: shellEnvironment)
             let terminal = TerminalSurfaceController(
-                surfaceID: id, workspaceID: workspace.id, workingDirectory: cwd, initialInput: initialInput,
-                environment: shellEnvironment, runtime: runtime
+                surfaceID: id, workspaceID: workspace.id, workingDirectory: cwd, command: launch.command,
+                initialInput: launch.typedInput, environment: launch.environment, runtime: runtime
             )
             terminal.onSignal = { [weak self] signal in self?.handleSignal(signal, from: id) }
             terminal.onFocusChange = { [weak self] focused in
@@ -631,6 +634,21 @@ final class AppModel {
         let workspaceID = workspace.id
         Task { await engine.surfaceOpened(id, workspace: workspaceID, cwd: cwd) }
         return surface
+    }
+
+    /// How a terminal pane starts: the plain login shell, or the login shell running a
+    /// command first. Shells without a usable `-c` (nu, xonsh…) get the command typed once
+    /// they're ready instead.
+    static func terminalLaunch(
+        _ startupCommand: String?, environment: [String: String], shell: String = ShellLaunch.userShell()
+    ) -> (command: String?, typedInput: String?, environment: [String: String]) {
+        guard let startupCommand = startupCommand?.trimmingCharacters(in: .whitespacesAndNewlines), !startupCommand.isEmpty else {
+            return (nil, nil, environment)
+        }
+        guard let wrapper = ShellLaunch.command(shell: shell) else {
+            return (nil, startupCommand, environment)
+        }
+        return (wrapper, nil, environment.merging(ShellLaunch.environment(running: startupCommand)) { _, new in new })
     }
 
     private func tearDown(_ surface: PaneSurface) {

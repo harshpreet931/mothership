@@ -26,12 +26,28 @@ public final class TerminalSurfaceController {
     public private(set) var isRunning = false
     public private(set) var hasExited = false
 
+    /// True once the program in the pane can take input: the shell drew its first real
+    /// prompt (its first OSC 7 / OSC 2, from precmd, settled for `readinessSettle`), or
+    /// `readinessFallback` passed since the surface attached. Until then `paste` and `sendKey`
+    /// queue. A shell still loading its rc files (an "instant prompt" may already be on screen
+    /// with bracketed paste on) would otherwise have the tty echo the input, markers and all.
+    public private(set) var isReady = false
+
+    /// Quiet time after the first prompt signal before input flows (the precmd burst of
+    /// OSC 133;A / 7 / 2 and the prompt itself land together; libghostty doesn't surface 133;A).
+    public static var readinessSettle: Duration = .milliseconds(120)
+    /// Readiness when no prompt signal ever comes (no shell integration, a program that
+    /// sets no title).
+    public static var readinessFallback: Duration = .seconds(4)
+
     private let terminalView: MothershipTerminalView
     private let bridge: DelegateBridge
     private var attachedSurface: TerminalSurface?
     private var scrollbar: TerminalScrollbar?
     private var pendingInput: [PendingInput] = []
-    private var initialInputArmed = false
+    private var readyWaiters: [@MainActor () -> Void] = []
+    private var readinessTimer: Task<Void, Never>?
+    private var fallbackTimer: Task<Void, Never>?
     private var visible = true
 
     private enum PendingInput {
@@ -41,9 +57,10 @@ public final class TerminalSurfaceController {
 
     /// - Parameters:
     ///   - workingDirectory: Where the shell starts; nil for Ghostty's default (home).
-    ///   - command: Replaces the login shell entirely. Prefer `initialInput` to run something
-    ///     inside the shell so the pane survives the command exiting.
-    ///   - initialInput: Typed into the shell once its first prompt is up, then Enter.
+    ///   - command: Replaces the login shell entirely (a shell command line). To run something
+    ///     and keep a shell afterwards, pass a wrapper such as `ShellLaunch.command(shell:)`.
+    ///   - initialInput: Typed into the shell once it is ready (see `isReady`), then Enter.
+    ///     Only for shells that can't take a `command` wrapper; typing races rc files.
     ///   - environment: Extra variables; the Mothership surface/workspace/socket variables
     ///     are always added.
     public init(
@@ -75,35 +92,58 @@ public final class TerminalSurfaceController {
         terminalView.controller = runtime.controller
         if let initialInput, !initialInput.isEmpty {
             pendingInput = [.paste(initialInput), .key(.enter)]
-            initialInputArmed = true
         }
     }
 
     /// The NSView to place in the pane. Owned by this controller.
     public var view: NSView { terminalView }
 
+    // MARK: Readiness
+
+    /// Runs `body` once the pane is ready for programmatic input (right away if it is).
+    public func whenReady(_ body: @escaping @MainActor () -> Void) {
+        if isReady { body() } else { readyWaiters.append(body) }
+    }
+
+    /// Suspends until the pane is ready for programmatic input.
+    public func waitUntilReady() async {
+        if isReady { return }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            whenReady { continuation.resume() }
+        }
+    }
+
     // MARK: Input
 
-    /// Bracketed paste (not keystrokes). Queued until the shell is up.
+    /// Pastes text (Ghostty frames it as a bracketed paste when the program asked for that;
+    /// never add the markers yourself). Queued until `isReady`, then sent in order.
     @discardableResult
     public func paste(text: String) -> Bool {
-        guard attachedSurface != nil, !initialInputArmed else {
+        guard attachedSurface != nil, isReady else {
             pendingInput.append(.paste(text))
             return true
         }
         return terminalView.paste(text: text)
     }
 
+    /// Presses a key. Queued with pastes until `isReady`, so "paste, then Enter" stays in order.
     @discardableResult
     public func sendKey(_ key: TerminalKeyInput) -> Bool {
-        guard attachedSurface != nil, !initialInputArmed else {
+        guard attachedSurface != nil, isReady else {
             pendingInput.append(.key(key))
             return true
         }
         return press(key)
     }
 
-    /// Runs a Ghostty binding action on this surface (e.g. `"clear_screen"`).
+    /// Clears the screen and the scrollback (Ghostty's `clear_screen`). At a shell prompt the
+    /// shell is asked to redraw it; full-screen programs (alternate screen) are left alone.
+    @discardableResult
+    public func clearScreen() -> Bool {
+        terminalView.performBindingAction("clear_screen")
+    }
+
+    /// Runs a Ghostty binding action on this surface (e.g. `"scroll_to_top"`).
     @discardableResult
     public func performAction(_ action: String) -> Bool {
         terminalView.performBindingAction(action)
@@ -164,14 +204,14 @@ public final class TerminalSurfaceController {
         attachedSurface = surface
         isRunning = true
         hasExited = false
-        if initialInputArmed {
-            // Give the shell a moment to print its first prompt if OSC 7 never arrives
-            // (no shell integration, e.g. fish without the plugin).
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-                self?.releaseInitialInput()
-            }
-        } else {
+        if isReady {
             flushPendingInput()
+        } else if fallbackTimer == nil {
+            fallbackTimer = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: Self.readinessFallback)
+                guard !Task.isCancelled else { return }
+                self?.becomeReady()
+            }
         }
     }
 
@@ -182,15 +222,42 @@ public final class TerminalSurfaceController {
 
     fileprivate func emit(_ signal: TerminalSignal) {
         switch signal {
-        case .title(let value): title = value
+        case .title(let value):
+            title = value
+            promptSignal()
         case .workingDirectory(let value):
             workingDirectory = value
-            // The shell's first OSC 7 means its prompt is ready for input.
-            releaseInitialInput()
+            promptSignal()
         case .processExited: hasExited = true
         default: break
         }
         onSignal?(signal)
+    }
+
+    /// OSC 7 and OSC 2 come from the shell's precmd (after its rc files ran) or from a program
+    /// that started and set its title: either way something is now reading input. Settle
+    /// briefly from the first one so the rest of the burst (the prompt itself) lands first.
+    /// Not restarted by later signals: agents animate their titles several times a second.
+    private func promptSignal() {
+        guard !isReady, attachedSurface != nil, readinessTimer == nil else { return }
+        readinessTimer = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.readinessSettle)
+            guard !Task.isCancelled else { return }
+            self?.becomeReady()
+        }
+    }
+
+    private func becomeReady() {
+        guard !isReady, attachedSurface != nil else { return }
+        isReady = true
+        readinessTimer?.cancel()
+        fallbackTimer?.cancel()
+        readinessTimer = nil
+        fallbackTimer = nil
+        flushPendingInput()
+        let waiters = readyWaiters
+        readyWaiters.removeAll()
+        for waiter in waiters { waiter() }
     }
 
     fileprivate func focusChanged(_ focused: Bool) {
@@ -215,14 +282,8 @@ public final class TerminalSurfaceController {
         scrollbar = value
     }
 
-    private func releaseInitialInput() {
-        guard initialInputArmed, attachedSurface != nil else { return }
-        initialInputArmed = false
-        flushPendingInput()
-    }
-
     private func flushPendingInput() {
-        guard attachedSurface != nil else { return }
+        guard attachedSurface != nil, isReady else { return }
         let queued = pendingInput
         pendingInput.removeAll()
         for item in queued {
