@@ -78,6 +78,8 @@ struct HomeMarkButton: View {
 
 /// "⌕ Search ⌘P" as a frosted capsule.
 struct SearchPill: View {
+    /// Fixed, so the toast dock can sit right beside it.
+    static let width: CGFloat = 120
     let action: () -> Void
     @State private var hovering = false
 
@@ -93,8 +95,7 @@ struct SearchPill: View {
                     .foregroundStyle(Sky.tertiary)
             }
             .foregroundStyle(Sky.secondary)
-            .padding(.horizontal, 14)
-            .frame(height: 32)
+            .frame(width: Self.width, height: 32)
             .glassCapsule()
             .overlay(Capsule().fill(Sky.ink.opacity(hovering ? 0.04 : 0)))
             .contentShape(Capsule())

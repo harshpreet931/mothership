@@ -373,6 +373,7 @@ struct NotificationSettings: View {
     @AppStorage(PreferenceKey.Notifications.sound) private var sound = true
     @AppStorage(PreferenceKey.Notifications.dockBadge) private var dockBadge = true
     @AppStorage(PreferenceKey.Notifications.whenVisible) private var whenVisible = false
+    @AppStorage(PreferenceKey.Notifications.externalAgents) private var externalAgents = false
 
     var body: some View {
         GlassList {
@@ -384,7 +385,8 @@ struct NotificationSettings: View {
             row("Terminal notifications", "OSC 9 / 99 / 777 from any program", "terminal", $terminal)
             row("Sounds", nil, "speaker.wave.2", $sound)
             row("Dock badge", "Count of agents that need you", "app.badge", $dockBadge)
-            row("Even when visible", "Also when the pane is on screen but Mothership is in the background", "eye", $whenVisible, divider: false)
+            row("Even when visible", "Also when the pane is on screen but Mothership is in the background", "eye", $whenVisible)
+            row("Agents running outside Mothership", "Claude, Codex and friends in other terminals or editors", "rectangle.on.rectangle", $externalAgents, divider: false)
         }
     }
 

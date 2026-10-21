@@ -96,7 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let time = environment["MOTHERSHIP_SKY_TIME"] { model.skyClock.pinTime(time) }
         model.skyClock.start()
         if let path = environment["MOTHERSHIP_SNAPSHOT"], !path.isEmpty {
-            DebugSnapshot.prepareView(environment["MOTHERSHIP_SNAPSHOT_VIEW"], model: model)
+            DebugSnapshot.prepareView(environment["MOTHERSHIP_SNAPSHOT_VIEW"], model: model, root: windowController.root)
             let delay = environment["MOTHERSHIP_SNAPSHOT_DELAY"].flatMap(Double.init) ?? 2.4
             DebugSnapshot.schedule(to: path, after: delay, window: windowController)
         }

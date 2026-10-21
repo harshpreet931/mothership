@@ -23,8 +23,9 @@ final class SnapshotMode {
 /// which over a soft sky is a faithful stand-in.
 @MainActor
 enum DebugSnapshot {
-    /// `MOTHERSHIP_SNAPSHOT_VIEW`: home | fleet | palette | settings[:agents|appearance|notifications|keys].
-    static func prepareView(_ view: String?, model: AppModel) {
+    /// `MOTHERSHIP_SNAPSHOT_VIEW`: home | fleet | palette | toasts[:open] |
+    /// settings[:agents|appearance|notifications|keys].
+    static func prepareView(_ view: String?, model: AppModel, root: RootView) {
         guard let view, !view.isEmpty else { return }
         let parts = view.split(separator: ":").map(String.init)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
@@ -42,6 +43,10 @@ enum DebugSnapshot {
                         title: "\(session.kind.shortName) · \(session.title ?? "Session")",
                         body: session.lastAssistantMessage ?? session.displayLine ?? "", shouldNotify: true
                     ))
+                }
+                if parts.count > 1, parts[1] == "open" {
+                    root.toastHover.hovering = true
+                    model.toastsHeld = true
                 }
             default: break
             }

@@ -20,7 +20,7 @@ final class RootView: NSView {
     private(set) var paletteHost: NSHostingView<CommandPaletteView>?
     private var observation: ObservationLoop?
     private var keyMonitor: Any?
-    private let toastHover = ToastHover()
+    let toastHover = ToastHover()
     private var peeking = false {
         didSet { if peeking != oldValue { animateLayout() } }
     }
@@ -39,7 +39,7 @@ final class RootView: NSView {
         sidebarHost = Self.host(SidebarView(model: model))
         composerHost = Self.host(ComposerView(model: model))
         topBarHost = Self.host(TopBar(model: model, router: router))
-        toastHost = SizingHostingView(rootView: ToastLayer(model: model, hover: toastHover))
+        toastHost = SizingHostingView(rootView: ToastLayer(model: model, hover: toastHover, maxWidth: 360))
         super.init(frame: NSRect(x: 0, y: 0, width: 1280, height: 820))
         wantsLayer = true
 
@@ -135,11 +135,19 @@ final class RootView: NSView {
         updateTrackingAreas()
     }
 
-    /// Exactly the stack's size (it grows while fanned), so it never blocks panes beneath it.
+    /// The toast dock sits in the top bar between the centered pill and the search pill,
+    /// sized exactly to its content so it never blocks anything beneath it.
     private func layoutToasts() {
+        let right = bounds.width - Sky.gutter - SearchPill.width - 8
+        let left = model.screen == .home ? 200 : bounds.midX + 100
+        let room = max(160, right - left)
+        if toastHost.rootView.maxWidth != room {
+            toastHost.rootView = ToastLayer(model: model, hover: toastHover, maxWidth: room)
+        }
         let size = toastHost.intrinsicContentSize
-        let height = min(max(size.height, 1), bounds.height - Sky.topBarHeight - 20)
-        toastHost.frame = NSRect(x: bounds.width - Sky.gutter - 344, y: Sky.topBarHeight + 4, width: 344, height: height)
+        let width = min(max(size.width, 1), max(room, 364))
+        let height = min(max(size.height, 1), bounds.height - 20)
+        toastHost.frame = NSRect(x: right - width, y: (Sky.topBarHeight - 32) / 2, width: width, height: height)
     }
 
     private func animateLayout() {
@@ -313,8 +321,9 @@ final class ToastHover {
 struct ToastLayer: View {
     let model: AppModel
     let hover: ToastHover
+    let maxWidth: CGFloat
     var body: some View {
-        AttentionStack(model: model, hovering: Binding(get: { hover.hovering }, set: { hover.hovering = $0 }))
+        ToastDock(model: model, hovering: Binding(get: { hover.hovering }, set: { hover.hovering = $0 }), maxWidth: maxWidth)
             .fixedSize(horizontal: false, vertical: true)
     }
 }

@@ -79,8 +79,10 @@ final class AppModel {
             runtime.backgroundOpacity = tintWithSky ? 0.88 : 1
         }
     }
-    /// In-app attention stack (top right), newest first.
+    /// In-app attention stack (top right), newest first, at most three.
     var toasts: [AttentionToast] = []
+    /// While the pointer is on the toasts, none of them expires.
+    @ObservationIgnored var toastsHeld = false
     /// Listening dev servers for the Home "Ports" panel.
     var ports: [ListeningPort] = []
     /// Prompts held until their agent goes idle (⇧⏎ in the composer).
@@ -520,7 +522,10 @@ final class AppModel {
             pruneToasts()
             onSessionsChanged?(list)
         case .attention(let event):
-            // In-app stack first; the hook (AttentionKit) decides about system banners.
+            // Stale replays and (by default) agents outside Mothership reach neither the
+            // stack nor the hook. In-app stack first; the hook (AttentionKit) decides about
+            // system banners.
+            guard shouldSurface(event) else { return }
             enqueueToast(event)
             onAttention?(event)
         case .permissionResolved(let id):

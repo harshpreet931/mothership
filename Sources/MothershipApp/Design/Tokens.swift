@@ -54,6 +54,8 @@ enum Sky {
     /// Selection (sidebar row, segmented pill, palette row, active circle): solid ink by
     /// Day; at night a frosted white 16 % with a 20 % white hairline and white text.
     static let selection = Color(nsColor: .skySelection)
+    /// Hairline around opaque cards floating over the sky (toasts).
+    static let cardStroke = Color(nsColor: .skyCardStroke)
     static let selectionStroke = Color(nsColor: .skySelectionStroke)
     static let onSelection = Color(nsColor: .skyOnSelection)
     /// Switches: ink track by Day, a calm blue at night (white on white reads as off).
@@ -92,6 +94,7 @@ extension NSColor {
     static let skySelection = dynamic(light: rgb(0x0D0E11), dark: rgb(0xFFFFFF, 0.16))
     static let skySelectionStroke = dynamic(light: rgb(0x0D0E11, 0), dark: rgb(0xFFFFFF, 0.2))
     static let skyOnSelection = NSColor.white
+    static let skyCardStroke = dynamic(light: rgb(0x0D0E11, 0.06), dark: rgb(0xFFFFFF, 0.08))
     static let skyAccentToggle = dynamic(light: rgb(0x0D0E11), dark: rgb(0x5B7CF0))
     /// Solid stand-in for glass under Reduce Transparency.
     static let skySolidPanel = dynamic(light: rgb(0xF4F6F9), dark: rgb(0x1D1F25))

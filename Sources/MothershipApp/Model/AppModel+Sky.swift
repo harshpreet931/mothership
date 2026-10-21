@@ -94,6 +94,31 @@ extension AppModel {
 
     // MARK: Attention stack
 
+    /// How long a toast stays: finished and terminal notifications 6 s, questions and
+    /// errors 10 s, permission requests until they're answered.
+    static func toastLifetime(_ kind: AttentionEvent.Kind) -> TimeInterval? {
+        switch kind {
+        case .permission: nil
+        case .needsInput, .failed: 10
+        case .finished, .notification: 6
+        }
+    }
+
+    /// An agent with no Mothership pane (a terminal elsewhere, an editor).
+    func isExternal(_ event: AttentionEvent) -> Bool {
+        guard event.surface == nil else { return false }
+        guard let key = event.session, let session = sessions.first(where: { $0.id == key }) else { return true }
+        return session.surface == nil
+    }
+
+    /// Whether an engine attention event is news: under 2 minutes old on arrival, and
+    /// from a Mothership pane unless "Agents running outside Mothership" is on.
+    func shouldSurface(_ event: AttentionEvent, now: Date = Date()) -> Bool {
+        guard now.timeIntervalSince(event.date) < 120 else { return false }
+        if isExternal(event), !UserDefaults.standard.bool(forKey: PreferenceKey.Notifications.externalAgents) { return false }
+        return true
+    }
+
     func enqueueToast(_ event: AttentionEvent) {
         // Only what you didn't see; the pane you're watching speaks for itself.
         guard event.shouldNotify else { return }
@@ -104,7 +129,19 @@ extension AppModel {
         withAnimationIfAllowed {
             toasts.removeAll { $0.event.session == event.session && event.session != nil }
             toasts.insert(AttentionToast(id: event.id, event: event), at: 0)
-            if toasts.count > 6 { toasts.removeLast(toasts.count - 6) }
+            // Three at most; transient ones make way before permission requests.
+            while toasts.count > 3 {
+                if let index = toasts.lastIndex(where: { $0.permissionID == nil }) { toasts.remove(at: index) } else { toasts.removeLast() }
+            }
+        }
+        if let lifetime = Self.toastLifetime(event.kind) { expireToast(event.id, after: lifetime) }
+    }
+
+    private func expireToast(_ id: UUID, after delay: TimeInterval) {
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard let self, toasts.contains(where: { $0.id == id }) else { return }
+            if toastsHeld { expireToast(id, after: 2) } else { dismissToast(id) }
         }
     }
 
