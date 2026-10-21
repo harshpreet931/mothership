@@ -57,6 +57,7 @@ let package = Package(
         ),
         .testTarget(name: "SystemProbeTests", dependencies: ["SystemProbe"]),
         .testTarget(name: "ControlPlaneTests", dependencies: ["ControlPlane", "ShipProtocol", "ShipModel"]),
+        .testTarget(name: "BrowserKitTests", dependencies: ["BrowserKit", "AttentionKit", "ShipModel"]),
     ],
     swiftLanguageModes: [.v6]
 )

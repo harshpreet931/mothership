@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var windowController: MainWindowController?
     private var settingsController: SettingsWindowController?
     private var router: CommandRouter?
+    private var services: AppServices?
 
     private var isDemo: Bool { environment["MOTHERSHIP_DEMO"] == "1" }
 
@@ -39,6 +40,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let model = AppModel(engine: makeAgentEngine(), runtime: runtime, store: store)
         model.shellEnvironment = CLIShim.shellEnvironment(shimDirectory: CLIShim.installIfNeeded())
         self.model = model
+        // Socket, notifications and browser panes; must exist before panes are restored.
+        let services = AppServices(model: model)
+        self.services = services
 
         let router = CommandRouter(model: model)
         router.openSettings = { [weak self] in self?.showSettings() }
@@ -63,6 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         windowController.showWindow(nil)
         windowController.window?.makeKeyAndOrderFront(nil)
         model.start()
+        services.start()
         NSApp.activate()
 
         if let path = environment["MOTHERSHIP_SNAPSHOT"], !path.isEmpty {
@@ -98,6 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_: Notification) {
+        services?.stop()
         model?.shutdown()
     }
 

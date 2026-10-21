@@ -9,7 +9,7 @@ public enum ShipEnvironment {
 
     public static func variables(surface: SurfaceID, workspace: WorkspaceID) -> [String: String] {
         [
-            socket: ShipPaths.socket.path,
+            socket: ShipPaths.appSocket.path,
             surfaceID: surface.description,
             workspaceID: workspace.description,
             version: ShipInfo.version,
@@ -39,8 +39,12 @@ public enum ShipPaths {
         if let override = ProcessInfo.processInfo.environment[ShipEnvironment.socket], !override.isEmpty {
             return URL(fileURLWithPath: override)
         }
-        return supportDirectory.appending(path: "control.sock")
+        return appSocket
     }
+
+    /// The socket the app itself listens on. Ignores an inherited `MOTHERSHIP_SOCKET`, so a
+    /// Mothership launched from a Mothership shell doesn't try to take over its parent's socket.
+    public static var appSocket: URL { supportDirectory.appending(path: "control.sock") }
 
     /// A stable copy of the `mship` CLI that agent hook configs point at, so moving or
     /// updating the app never breaks installed hooks.
