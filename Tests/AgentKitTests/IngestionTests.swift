@@ -78,6 +78,16 @@ struct IngestionTests {
         #expect(await ingestor.peek(path: path).isEmpty)
     }
 
+    @Test func thinkingLineDoesNotEndTheTurnBeforeTheReply() throws {
+        var state = TranscriptDecodeState()
+        let thinking = line(#"{"type":"assistant","message":{"id":"m9","role":"assistant","model":"claude-opus-5-5","content":[{"type":"thinking","thinking":"…"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}},"timestamp":"\#(iso(10))","sessionId":"\#(Self.session)"}"#)
+        let events = ClaudeAdapter().decodeTranscript(.line(path: "/p/\(Self.session).jsonl", data: Data(thinking.utf8)), state: &state).map(\.event)
+        #expect(!events.contains { if case .turnCompleted = $0 { true } else { false } })
+        let reply = assistantLine("m9", text: "All set.", stop: "end_turn", at: 12)
+        let final = ClaudeAdapter().decodeTranscript(.line(path: "/p/\(Self.session).jsonl", data: Data(reply.utf8)), state: &state).map(\.event)
+        #expect(final.contains(.turnCompleted(lastMessage: "All set.")))
+    }
+
     @Test func streamingAssistantMeansWorking() throws {
         var state = TranscriptDecodeState()
         let streaming = assistantLine("s1", text: "Let me check", stop: nil, at: 5)

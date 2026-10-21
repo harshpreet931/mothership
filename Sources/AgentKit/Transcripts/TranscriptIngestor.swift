@@ -81,7 +81,51 @@ actor TranscriptIngestor {
             if let markers = entry.markers, !line.containsAny(markers) { continue }
             signals += entry.adapter.decodeTranscript(.line(path: path, data: line), state: &state)
         }
+        Self.markReplay(&signals)
         return signals
+    }
+
+    static func markReplay(_ signals: inout [AgentSignal]) {
+        for index in signals.indices { signals[index].isReplay = true }
+    }
+
+    // MARK: Watching (kqueue)
+
+    /// Paths worth watching whatever sessions are live: state directories, indexes, the OpenCode
+    /// database and its WAL, and dated directories where new transcripts appear.
+    func staticWatchPaths(now: Date = Date()) -> [String] {
+        var paths: [String] = []
+        for entry in sources {
+            switch entry.source.format {
+            case .jsonDocument:
+                paths.append(entry.source.root.path)
+            case .sqlite:
+                let database = entry.source.root.path
+                paths += [database, database + "-wal", entry.source.root.deletingLastPathComponent().path]
+            case .jsonl:
+                break
+            }
+            paths += entry.source.eagerFiles.map(\.path)
+            paths += entry.source.watchDirectories(now).map(\.path)
+        }
+        var seen: Set<String> = []
+        return paths.filter { seen.insert($0).inserted }
+    }
+
+    /// Files in `directory` that a source accepts and that changed since `since` (new
+    /// transcripts after `/clear`, new rollouts, rewritten status files).
+    func changedFiles(inDirectory directory: String, since: Date) -> [FileChange] {
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: directory), names.count < 4096 else { return [] }
+        var changes: [FileChange] = []
+        for name in names {
+            let path = (directory as NSString).appendingPathComponent(name)
+            guard source(for: path) != nil,
+                let modified = (try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date,
+                modified >= since
+            else { continue }
+            changes.append(FileChange(path: path, flags: 0))
+        }
+        return changes
     }
 
     func source(for path: String) -> Source? {
@@ -153,6 +197,7 @@ actor TranscriptIngestor {
             }
             tail = Tail(tailer: tailer, state: state, lastRead: Date())
             tails[path] = tail
+            Self.markReplay(&prefix)
             if !prefix.isEmpty {
                 return prefix + readTail(path, entry: entry, fromStart: fromStart)
             }
@@ -164,13 +209,16 @@ actor TranscriptIngestor {
             if read.didReset {
                 tail.state = TranscriptDecodeState(isInitialLoad: false)
             }
+            let replay = tail.state.isInitialLoad
             for line in read.lines {
                 if let markers = entry.markers, !line.containsAny(markers) {
                     linesSkipped += 1
                     continue
                 }
                 linesParsed += 1
-                signals += entry.adapter.decodeTranscript(.line(path: path, data: line), state: &tail.state)
+                var decoded = entry.adapter.decodeTranscript(.line(path: path, data: line), state: &tail.state)
+                if replay { Self.markReplay(&decoded) }
+                signals += decoded
             }
             rounds += 1
             if !read.hasMore { break }
@@ -241,9 +289,11 @@ actor TranscriptIngestor {
         if let previous = documents[path], previous.modified == modified, previous.size == size { return [] }
         documents[path] = (modified, size)
         guard let data = FileManager.default.contents(atPath: path) else { return [] }
+        let firstSight = documentStates[path] == nil
         var state = documentStates[path] ?? TranscriptDecodeState()
-        let signals = entry.adapter.decodeTranscript(.document(path: path, data: data), state: &state)
+        var signals = entry.adapter.decodeTranscript(.document(path: path, data: data), state: &state)
         documentStates[path] = state
+        if firstSight { Self.markReplay(&signals) }
         return signals
     }
 

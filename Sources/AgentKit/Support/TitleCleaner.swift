@@ -123,6 +123,31 @@ public enum TitleCleaner {
         return text
     }
 
+    /// Markdown → one line of plain text: headings dropped, emphasis/code/links unwrapped,
+    /// whitespace collapsed, home paths shortened to `~`, cut at a word boundary.
+    public static func plainText(_ markdown: String, limit: Int = 140) -> String? {
+        let body = RegexCache.replace(#"(?m)^\s{0,3}#{1,6}\s.*$"#, in: markdown, with: " ")
+        var text = collapse(stripMarkdown(body))
+        if !isMeaningful(text) { text = collapse(stripMarkdown(markdown)) }
+        return plainLine(text, limit: limit)
+    }
+
+    /// One line, home paths shortened, cut at a word boundary — no markdown handling (for
+    /// commands and paths, where `*` and `_` are literal).
+    public static func plainLine(_ text: String, limit: Int = 140) -> String? {
+        let line = collapse(abbreviatingHome(text)).trimmingCharacters(in: .whitespaces)
+        guard !line.isEmpty else { return nil }
+        return truncate(line, limit: limit)
+    }
+
+    static let home = FileManager.default.homeDirectoryForCurrentUser.path
+
+    /// "/Users/me/Downloads/x.mp4" → "~/Downloads/x.mp4".
+    public static func abbreviatingHome(_ text: String) -> String {
+        guard home.count > 1 else { return text }
+        return text.replacingOccurrences(of: home + "/", with: "~/")
+    }
+
     /// The first sentence of an assistant reply, plain text, at most `limit` characters.
     public static func firstSentence(_ markdown: String, limit: Int = summaryLimit) -> String? {
         // Headings ("## Summary") label a reply; they aren't its first sentence.

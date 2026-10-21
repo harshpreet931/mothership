@@ -218,9 +218,16 @@ public struct ClaudeAdapter: AgentAdapter {
             }
             if let lastText { metadata.lastAssistantMessage = lastText }
             if !metadata.isEmpty { signals.insert(signal(.metadata(metadata)), at: 0) }
-            switch message["stop_reason"].string {
+            let stopReason = message["stop_reason"].string ?? ""
+            switch stopReason {
             case "end_turn", "stop_sequence", "refusal":
-                signals.append(signal(.turnCompleted(lastMessage: lastText)))
+                if lastText != nil || startedTool {
+                    signals.append(signal(.turnCompleted(lastMessage: lastText)))
+                } else {
+                    // A thinking block is written (already carrying the final stop_reason) before
+                    // the reply text; the turn ends with the text line or `turn_duration`.
+                    signals.append(signal(.observedState(.working(tool: nil))))
+                }
             default:
                 // Still streaming, or text/thinking before the next tool call: the turn is live.
                 if !startedTool { signals.append(signal(.observedState(.working(tool: nil)))) }
@@ -300,6 +307,11 @@ public struct ClaudeAdapter: AgentAdapter {
             signals.append(AgentSignal(tier: .transcript, source: "status:claude", hint: hint, event: .observedState(state), timestamp: timestamp))
         }
         return SessionBinding(sessionID: sessionID, transcriptPath: transcript, signals: signals)
+    }
+
+    public func statePaths(for session: AgentSession, home: URL) -> [String] {
+        guard let pid = session.pid else { return [] }
+        return [Self.sessionsRoot(home).appending(path: "\(pid).json").path]
     }
 
     public func bindSession(_ process: ObservedProcess, context: BindingContext) -> SessionBinding? {

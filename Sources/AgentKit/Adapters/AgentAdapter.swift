@@ -86,16 +86,19 @@ public struct TranscriptSource: Sendable {
     public var titleMarkers: [String]?
     /// Files to read when the engine starts (small indexes, e.g. Codex's thread names).
     public var eagerFiles: [URL]
+    /// Extra directories to watch for new files at a given date (Codex's `YYYY/MM/DD`).
+    public var watchDirectories: @Sendable (Date) -> [URL]
 
     public init(
         format: Format, root: URL, lineMarkers: [String]? = nil, titleMarkers: [String]? = nil, eagerFiles: [URL] = [],
-        accepts: @escaping @Sendable (String) -> Bool
+        watchDirectories: @escaping @Sendable (Date) -> [URL] = { _ in [] }, accepts: @escaping @Sendable (String) -> Bool
     ) {
         self.format = format
         self.root = root
         self.lineMarkers = lineMarkers
         self.titleMarkers = titleMarkers
         self.eagerFiles = eagerFiles
+        self.watchDirectories = watchDirectories
         self.accepts = accepts
     }
 }
@@ -211,6 +214,8 @@ public protocol AgentAdapter: Sendable {
     func decodeTranscript(_ record: TranscriptRecord, state: inout TranscriptDecodeState) -> [AgentSignal]
     /// Resolve the agent's own session id for a live root process.
     func bindSession(_ process: ObservedProcess, context: BindingContext) -> SessionBinding?
+    /// Files besides the transcript that change while a session runs (Claude's per-pid status file).
+    func statePaths(for session: AgentSession, home: URL) -> [String]
     /// The transcript file for a known session, if it exists.
     func transcriptPath(sessionID: String, cwd: String, home: URL) -> String?
 
@@ -233,6 +238,7 @@ extension AgentAdapter {
     public func transcriptSources(home: URL) -> [TranscriptSource] { [] }
     public func decodeTranscript(_ record: TranscriptRecord, state: inout TranscriptDecodeState) -> [AgentSignal] { [] }
     public func bindSession(_ process: ObservedProcess, context: BindingContext) -> SessionBinding? { nil }
+    public func statePaths(for session: AgentSession, home: URL) -> [String] { [] }
     public func transcriptPath(sessionID: String, cwd: String, home: URL) -> String? { nil }
     public func screenRules() -> [ScreenRule] { [] }
     public func titleRule() -> TitleRule? { nil }

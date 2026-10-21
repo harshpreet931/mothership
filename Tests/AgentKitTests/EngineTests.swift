@@ -296,6 +296,7 @@ struct EngineTests {
         var configuration = AgentEngineConfiguration.isolated(home: home.root)
         configuration.transcriptWatching = true
         configuration.transcriptPollInterval = 0.1
+        configuration.safetyPollInterval = 0.2
         configuration.updateInterval = 0.02
         let engine = AgentEngine(configuration: configuration)
         await engine.start()
