@@ -83,13 +83,10 @@ differentiator. **The edge has to be the agent layer:**
 so the PTYs can move out of the app later: the UI talks to a `TerminalSession` handle, not
 to a PTY or a Ghostty surface directly.
 
-**v2 adds an optional `mshipd`** (a launchd agent) that owns the PTYs and keeps headless
-terminal state with `libghostty-vt`. The app becomes a renderer, sessions survive app
-crashes and updates, and remote attach becomes possible (iPhone companion, SSH).
-**[SPIKE]** Check whether libghostty's embedded runtime can render a surface fed by an
-external PTY or byte stream. If it can't, v2 needs `libghostty-vt` plus your own renderer,
-which is the main reason to defer it. Agent-aware resume (§8) gets you most of the
-persistence value at a fraction of the cost.
+**Persistent sessions (shipped):** `mshipd` owns every pane's PTY and a 6 MB output ring, so
+shells and agents survive quitting, crashing or `kill -9` of the app. On relaunch, each pane
+reattaches with its screen and scrollback through libghostty's in-memory backend. Design,
+protocol and measurements: `docs/agents/sessions.md`.
 
 ---
 
