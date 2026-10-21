@@ -1,0 +1,264 @@
+import AppKit
+import ShipModel
+import ShipProtocol
+import SwiftUI
+
+/// Full-window views (the top bar's segmented pill, ⌂ and ⌘,).
+enum AppScreen: String, Sendable {
+    case workspaces, fleet, home, settings
+}
+
+enum SettingsTab: String, CaseIterable, Sendable {
+    case agents, appearance, notifications, keys
+
+    var title: String {
+        switch self {
+        case .agents: "Agents"
+        case .appearance: "Appearance"
+        case .notifications: "Notifications"
+        case .keys: "Keys"
+        }
+    }
+}
+
+enum PermissionDecisionKind: Sendable { case allowed, denied }
+
+/// One card in the in-app attention stack.
+struct AttentionToast: Identifiable, Equatable {
+    let id: UUID
+    let event: AttentionEvent
+
+    var surface: SurfaceID? { event.surface }
+    var permissionID: PermissionRequestID? {
+        if case .permission(let request) = event.kind { return request.id }
+        return nil
+    }
+}
+
+/// A listening dev server, for Home's Ports panel.
+struct ListeningPort: Identifiable, Equatable, Sendable {
+    var id: Int { port }
+    let port: Int
+    let process: String
+    var workspaceName: String?
+
+    var url: URL? { URL(string: "http://localhost:\(port)") }
+}
+
+struct QueuedPrompt: Identifiable, Equatable {
+    let id = UUID()
+    let text: String
+    let surface: SurfaceID
+}
+
+/// Runs `body` in a spring unless Reduce Motion is on.
+@MainActor
+func withAnimationIfAllowed(_ body: () -> Void) {
+    if SkyAccessibility.reduceMotion {
+        body()
+    } else {
+        withAnimation(Sky.spring, body)
+    }
+}
+
+extension AppModel {
+    // MARK: Sky / appearance
+
+    /// The concrete sky now showing.
+    var resolvedSky: SkyPreset { skyPreset.resolved(systemDark: systemIsDark) }
+    var chromeIsDark: Bool { skyPreset.chromeIsDark(systemDark: systemIsDark) }
+
+    func show(_ screen: AppScreen) {
+        guard self.screen != screen else { return }
+        withAnimationIfAllowed { self.screen = screen }
+        if screen == .workspaces, let focused = focusedSurface?.id { requestFocus(focused) }
+    }
+
+    /// ⌂ toggles Home.
+    func toggleHome() {
+        show(screen == .home ? .workspaces : .home)
+    }
+
+    func openSettings(_ tab: SettingsTab? = nil) {
+        if let tab { settingsTab = tab }
+        show(.settings)
+    }
+
+    // MARK: Attention stack
+
+    func enqueueToast(_ event: AttentionEvent) {
+        // Only what you didn't see; the pane you're watching speaks for itself.
+        guard event.shouldNotify else { return }
+        switch event.kind {
+        case .finished where !appIsActive: return
+        default: break
+        }
+        withAnimationIfAllowed {
+            toasts.removeAll { $0.event.session == event.session && event.session != nil }
+            toasts.insert(AttentionToast(id: event.id, event: event), at: 0)
+            if toasts.count > 6 { toasts.removeLast(toasts.count - 6) }
+        }
+    }
+
+    func dismissToast(_ id: UUID? = nil) {
+        withAnimationIfAllowed {
+            if let id { toasts.removeAll { $0.id == id } } else if !toasts.isEmpty { toasts.removeFirst() }
+        }
+    }
+
+    func openToast(_ toast: AttentionToast) {
+        if let surface = toast.surface { focusSurface(surface) }
+        dismissToast(toast.id)
+    }
+
+    /// Drops toasts whose session no longer needs anything.
+    func pruneToasts() {
+        let stale = toasts.filter { toast in
+            guard let key = toast.event.session else { return false }
+            guard let session = sessions.first(where: { $0.id == key }) else { return true }
+            switch toast.event.kind {
+            case .permission: return session.pendingPermission == nil
+            case .needsInput: return !session.state.isNeedsInput
+            default: return false
+            }
+        }
+        guard !stale.isEmpty else { return }
+        let ids = Set(stale.map(\.id))
+        withAnimationIfAllowed { toasts.removeAll { ids.contains($0.id) } }
+    }
+
+    // MARK: Composer
+
+    /// The live agent in the focused pane, which the composer talks to.
+    var composerTarget: AgentSession? {
+        guard let surface = focusedSurface?.id else { return nil }
+        return sessions.first { $0.surface == surface && $0.state.isLive }
+    }
+
+    var composerPlaceholder: String {
+        if composerBroadcast { return "Message every agent" }
+        if let target = composerTarget, let workspace = target.surface.flatMap({ workspace(containing: $0) }) {
+            return "Message \(target.kind.shortName) · \(workspace.name)"
+        }
+        return "Start a task…"
+    }
+
+    /// ⏎ sends; ⇧⏎ (`queue`) holds the prompt until the agent is idle.
+    func submitComposer(_ text: String, queue: Bool) {
+        let prompt = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prompt.isEmpty else { return }
+        if composerBroadcast {
+            for session in sessions where session.state.isLive {
+                guard let surface = session.surface else { continue }
+                if session.state.isWorking {
+                    composerQueue.append(QueuedPrompt(text: prompt, surface: surface))
+                } else {
+                    deliver(prompt, to: surface)
+                }
+            }
+            return
+        }
+        if let target = composerTarget, let surface = target.surface {
+            if queue, target.state.isWorking {
+                withAnimationIfAllowed { composerQueue.append(QueuedPrompt(text: prompt, surface: surface)) }
+            } else {
+                deliver(prompt, to: surface)
+            }
+            return
+        }
+        startTask(prompt, agent: composerAgent)
+    }
+
+    /// "Start a task…": the agent with the prompt, in a new workspace beside the current one.
+    func startTask(_ prompt: String, agent: AgentKind) {
+        let engine = self.engine
+        let directory = focusedSurface?.terminal?.workingDirectory ?? selectedWorkspace?.currentDirectory
+        Task { [weak self] in
+            let command = await engine.launchCommand(agent, prompt: prompt)
+            self?.createWorkspace(cwd: directory, command: command)
+        }
+    }
+
+    /// Bracketed paste, then Enter.
+    func deliver(_ text: String, to surface: SurfaceID) {
+        guard let terminal = self.surface(surface)?.terminal else { return }
+        terminal.paste(text: text)
+        terminal.sendKey(.enter)
+    }
+
+    func queuedCount(for surface: SurfaceID?) -> Int {
+        guard let surface else { return composerQueue.count }
+        return composerQueue.filter { $0.surface == surface }.count
+    }
+
+    /// Sends the oldest queued prompt to each agent that just went idle.
+    func flushComposerQueue() {
+        guard !composerQueue.isEmpty else { return }
+        var delivered: Set<SurfaceID> = []
+        var remaining: [QueuedPrompt] = []
+        for prompt in composerQueue {
+            let session = sessions.first { $0.surface == prompt.surface && $0.state.isLive }
+            let ready = session.map { !$0.state.isWorking && $0.pendingPermission == nil } ?? false
+            if ready, !delivered.contains(prompt.surface) {
+                deliver(prompt.text, to: prompt.surface)
+                delivered.insert(prompt.surface)
+            } else if session != nil {
+                remaining.append(prompt)
+            }
+        }
+        if remaining != composerQueue { composerQueue = remaining }
+    }
+
+    // MARK: Home
+
+    var firstName: String {
+        let full = NSFullUserName()
+        return full.split(separator: " ").first.map(String.init) ?? (full.isEmpty ? "there" : full)
+    }
+
+    func greeting(at date: Date = Date()) -> String {
+        let hour = Calendar.current.component(.hour, from: date)
+        let part = switch hour {
+        case 5 ..< 12: "Good morning"
+        case 12 ..< 17: "Good afternoon"
+        case 17 ..< 22: "Good evening"
+        default: "Working late"
+        }
+        return "\(part), \(firstName)"
+    }
+
+    /// "3 agents working · 1 needs you", or a celebration of zero.
+    var statusSentence: String {
+        let live = sessions.filter { $0.state.isLive }
+        let working = live.filter(\.state.isWorking).count
+        let needs = live.filter(\.needsYou).count
+        let errors = live.filter(\.state.isError).count
+        var parts: [String] = []
+        if working > 0 { parts.append("\(working) agent\(working == 1 ? "" : "s") working") }
+        if needs > 0 { parts.append("\(needs) need\(needs == 1 ? "s" : "") you") }
+        if errors > 0 { parts.append("\(errors) failed") }
+        if parts.isEmpty {
+            return live.isEmpty ? "Nothing running. The sky is clear." : "All quiet. \(live.count) agent\(live.count == 1 ? "" : "s") idle."
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    /// Tokens and cost across every known session (today's sessions in the real engine).
+    var todayTotals: (tokens: Int, cost: Double, sessions: Int) {
+        let live = sessions.filter { Calendar.current.isDateInToday($0.lastActivity) }
+        let tokens = live.reduce(0) { $0 + $1.usage.inputTokens + $1.usage.outputTokens + $1.usage.cacheWriteTokens }
+        let cost = live.reduce(0.0) { $0 + ($1.usage.costUSD ?? 0) }
+        return (tokens, cost, live.count)
+    }
+}
+
+extension AgentKind {
+    /// "Claude", "Codex"… for tight UI.
+    var shortName: String {
+        switch self {
+        case .claude: "Claude"
+        case .gemini: "Gemini"
+        default: displayName
+        }
+    }
+}

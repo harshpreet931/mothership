@@ -192,23 +192,9 @@ extension TerminalConfiguration {
         }
     }
 
-    static let mothershipLight = TerminalConfiguration { builder in
-        builder.withBackground("FBFBFC")
-        builder.withForeground("23262D")
-        builder.withCursorColor("C8642E")
-        builder.withCursorText("FBFBFC")
-        builder.withSelectionBackground("CFDAF0")
-        builder.withSelectionForeground("1A1D22")
-        let palette = [
-            "#23262D", "#C4382F", "#3D8A2E", "#A86A00", "#2F62C9", "#8A4CC2", "#14858A", "#C9CDD6",
-            "#6B7280", "#E0473D", "#4CA33A", "#C88A10", "#4277E0", "#A363DB", "#1C9EA3", "#E9EBEF",
-        ]
-        for (index, color) in palette.enumerated() {
-            builder.withPalette(index, color: color)
-        }
-    }
 }
 
 extension TerminalTheme {
-    static let mothership = TerminalTheme(light: .mothershipLight, dark: .mothershipDark)
+    /// Dark in every sky: dark terminal cards on a Day sky are part of the look (DESIGN §8).
+    static let mothership = TerminalTheme(light: .mothershipDark, dark: .mothershipDark)
 }

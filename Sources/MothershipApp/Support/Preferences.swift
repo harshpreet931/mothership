@@ -5,6 +5,11 @@ import Foundation
 enum PreferenceKey {
     static let fontSize = "terminal.fontSize"
     static let theme = "terminal.theme"
+    /// `SkyPreset` raw value.
+    static let sky = "sky.preset"
+    static let composerVisible = "composer.visible"
+    /// Terminal cards at 88 % with a blur, letting the sky through.
+    static let tintWithSky = "terminal.tintWithSky"
 
     enum Notifications {
         /// Master switch for banners.

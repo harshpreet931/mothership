@@ -161,6 +161,8 @@ struct SkyBackdrop: View {
     private func layers(time: TimeInterval) -> some View {
         ZStack {
             MeshGradient(width: 3, height: 3, points: Self.points(time: time), colors: preset.meshColors, smoothsColors: true)
+            if preset == .day || preset == .auto { Clouds(time: time, opacity: 1) }
+            if preset == .dusk { Clouds(time: time, opacity: 0.55) }
             if preset == .night { StarGrain() }
             NoiseOverlay()
         }
@@ -179,6 +181,44 @@ struct SkyBackdrop: View {
             [0, 0.5 + wobble(1.7, 0.07)], [0.5 + wobble(2.4, 0.08), 0.5 + wobble(4.1, 0.07)], [1, 0.5 + wobble(3.3, 0.06)],
             [0, 1], [0.5 + wobble(5.2, 0.07), 1], [1, 1],
         ]
+    }
+}
+
+/// Soft, heavily diffused cloud banks (Hark's blurred sky photo, procedurally): stretched
+/// radial washes of white that drift a few points per minute.
+struct Clouds: View {
+    let time: TimeInterval
+    let opacity: Double
+
+    /// (x, y, radius, stretch, alpha) in unit space.
+    private static let banks: [(Double, Double, Double, Double, Double)] = [
+        (0.18, 0.30, 0.16, 2.6, 0.20), (0.62, 0.22, 0.12, 3.2, 0.16), (0.88, 0.42, 0.18, 2.2, 0.24),
+        (0.30, 0.68, 0.22, 2.4, 0.30), (0.72, 0.78, 0.26, 2.0, 0.38), (0.08, 0.92, 0.20, 2.8, 0.26),
+        (0.50, 0.50, 0.14, 3.0, 0.14),
+    ]
+
+    var body: some View {
+        Canvas { context, size in
+            let drift = time / 60 * 2 * .pi
+            for (index, bank) in Self.banks.enumerated() {
+                let (x, y, radius, stretch, alpha) = bank
+                let dx = sin(drift + Double(index) * 1.3) * 0.012
+                let center = CGPoint(x: (x + dx) * size.width, y: y * size.height)
+                let r = radius * max(size.width, size.height) * 0.5
+                var layer = context
+                layer.translateBy(x: center.x, y: center.y)
+                layer.scaleBy(x: stretch, y: 1)
+                let gradient = Gradient(stops: [
+                    .init(color: .white.opacity(alpha * opacity), location: 0),
+                    .init(color: .white.opacity(alpha * opacity * 0.45), location: 0.45),
+                    .init(color: .white.opacity(0), location: 1),
+                ])
+                layer.fill(
+                    Path(ellipseIn: CGRect(x: -r, y: -r, width: r * 2, height: r * 2)),
+                    with: .radialGradient(gradient, center: .zero, startRadius: 0, endRadius: r)
+                )
+            }
+        }
     }
 }
 

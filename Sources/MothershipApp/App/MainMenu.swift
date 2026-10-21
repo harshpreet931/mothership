@@ -94,8 +94,12 @@ enum MainMenu {
 
     private static func viewMenu(router: CommandRouter) -> NSMenu {
         let menu = NSMenu(title: "View")
+        menu.addItem(command(.home, router: router))
+        menu.addItem(command(.fleet, router: router))
+        menu.addItem(.separator())
         menu.addItem(command(.commandPalette, router: router))
         menu.addItem(command(.toggleSidebar, router: router))
+        menu.addItem(command(.toggleComposer, router: router))
         menu.addItem(.separator())
         menu.addItem(command(.increaseFontSize, router: router))
         menu.addItem(command(.increaseFontSize, router: router, hidden: true, key: "="))

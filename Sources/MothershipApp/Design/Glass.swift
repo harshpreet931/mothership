@@ -5,18 +5,26 @@ import SwiftUI
 /// is also what a `cacheDisplay` snapshot captures.
 struct GlassBackground<S: InsettableShape>: ViewModifier {
     let shape: S
-    var interactive = false
+    /// Overlays that sit above busy content (palette, toasts) use a denser tint (§9 scrim).
+    var dense = false
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
 
     func body(content: Content) -> some View {
         content.background {
             ZStack {
+                let tint = dense ? Sky.glassDense : Sky.glassFill
                 if reduceTransparency {
                     shape.fill(Color(nsColor: .skySolidPanel))
                 } else {
-                    shape.fill(.ultraThinMaterial)
-                    shape.fill(Sky.glassFill)
+                    if SnapshotMode.shared.active {
+                        shape.fill(tint)
+                    } else {
+                        // The material whitens a little on its own; together they land on
+                        // the spec's tint.
+                        shape.fill(.ultraThinMaterial)
+                        shape.fill(tint.opacity(0.75))
+                    }
                     // Top inner hairline: light catching the edge of the glass.
                     shape.strokeBorder(
                         LinearGradient(colors: [Sky.glassHighlight, Sky.glassHighlight.opacity(0)], startPoint: .top, endPoint: .init(x: 0.5, y: 0.35)),
@@ -36,8 +44,8 @@ extension View {
         modifier(GlassBackground(shape: shape))
     }
 
-    func glassPanel(radius: CGFloat = Sky.radiusPanel) -> some View {
-        glass(RoundedRectangle(cornerRadius: radius, style: .continuous))
+    func glassPanel(radius: CGFloat = Sky.radiusPanel, dense: Bool = false) -> some View {
+        modifier(GlassBackground(shape: RoundedRectangle(cornerRadius: radius, style: .continuous), dense: dense))
     }
 
     func glassCapsule() -> some View {
@@ -86,6 +94,8 @@ struct InkCapsuleStyle: ButtonStyle {
 struct SecondaryPillStyle: ButtonStyle {
     var height: CGFloat = 28
     var foreground: Color = Sky.ink
+    /// `pill.secondary` by default; a recess when the pill sits on a white card.
+    var fill: Color = Sky.pillSecondary
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -93,7 +103,7 @@ struct SecondaryPillStyle: ButtonStyle {
             .foregroundStyle(foreground)
             .padding(.horizontal, height * 0.5)
             .frame(height: height)
-            .background(Capsule(style: .continuous).fill(Sky.pillSecondary))
+            .background(Capsule(style: .continuous).fill(fill))
             .opacity(configuration.isPressed ? 0.75 : 1)
             .contentShape(Capsule())
     }

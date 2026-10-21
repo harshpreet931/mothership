@@ -61,7 +61,7 @@ public final class TerminalRuntime {
         controller = TerminalController(
             configSource: .generated(composed.base),
             theme: Self.theme(for: themeChoice, composed: composed),
-            terminalConfiguration: Self.overrides(composed: composed, fontSize: fontSize.map(Self.clamp))
+            terminalConfiguration: Self.overrides(composed: composed, fontSize: fontSize.map(Self.clamp), backgroundOpacity: 1)
         )
 
         if let issue = controller.lastConfigurationIssue {
@@ -74,9 +74,22 @@ public final class TerminalRuntime {
                 controller.updateConfigSource(.generated(""))
             }
             controller.setTheme(Self.theme(for: themeChoice, composed: composed))
-            controller.setTerminalConfiguration(Self.overrides(composed: composed, fontSize: fontSizeOverride))
+            controller.setTerminalConfiguration(Self.overrides(composed: composed, fontSize: fontSizeOverride, backgroundOpacity: 1))
         }
         self.composed = composed
+    }
+
+    /// Below 1 lets the pane's blur (and the sky) through the terminal background.
+    public var backgroundOpacity: Double = 1 {
+        didSet {
+            guard backgroundOpacity != oldValue else { return }
+            applyOverrides()
+        }
+    }
+
+    private func applyOverrides() {
+        controller.setTerminalConfiguration(Self.overrides(composed: composed, fontSize: fontSizeOverride, backgroundOpacity: backgroundOpacity))
+        onConfigurationChange?()
     }
 
     // MARK: Theme
@@ -116,9 +129,8 @@ public final class TerminalRuntime {
         case .automatic:
             return nil
         case .mothership:
-            return dark
-                ? (hex("0E1013"), hex("D9DCE3"), ["F2777A", "A3D68E", "EDC57E", "7FA7F5", "C59BF2"].map(hex))
-                : (hex("FBFBFC"), hex("23262D"), ["C4382F", "3D8A2E", "A86A00", "2F62C9", "8A4CC2"].map(hex))
+            // Dark in every sky: dark cards on a Day sky are part of the look (DESIGN §8).
+            return (hex("0E1013"), hex("D9DCE3"), ["F2777A", "A3D68E", "EDC57E", "7FA7F5", "C59BF2"].map(hex))
         case .named(let name):
             guard let theme = GhosttyConfigComposer.catalogTheme(named: name) else { return nil }
             let accents = (1 ... 5).compactMap { theme.palette[$0] }.map(hex)
@@ -139,8 +151,7 @@ public final class TerminalRuntime {
         let clamped = size.map(Self.clamp)
         guard clamped != fontSizeOverride else { return }
         fontSizeOverride = clamped
-        controller.setTerminalConfiguration(Self.overrides(composed: composed, fontSize: clamped))
-        onConfigurationChange?()
+        applyOverrides()
     }
 
     public func adjustFontSize(by delta: Float) {
@@ -170,15 +181,19 @@ public final class TerminalRuntime {
         }
     }
 
-    private static func overrides(composed: ComposedGhosttyConfig, fontSize: Float?) -> TerminalConfiguration {
+    private static func overrides(composed: ComposedGhosttyConfig, fontSize: Float?, backgroundOpacity: Double) -> TerminalConfiguration {
         TerminalConfiguration { builder in
             if let size = fontSize ?? (composed.userFontSize == nil ? defaultFontSize : nil) {
                 builder.withFontSize(size)
             }
             if !composed.definesPadding {
-                builder.withWindowPaddingX(12)
-                builder.withWindowPaddingY(8)
+                // Sky §8: 16 / 14 inside a radius-18 card.
+                builder.withWindowPaddingX(16)
+                builder.withWindowPaddingY(14)
                 builder.withCustom("window-padding-balance", "true")
+            }
+            if backgroundOpacity < 1 {
+                builder.withBackgroundOpacity(backgroundOpacity)
             }
             // Panes close through Mothership's own UI; Ghostty's quit/close prompts don't apply.
             builder.withCustom("confirm-close-surface", "false")

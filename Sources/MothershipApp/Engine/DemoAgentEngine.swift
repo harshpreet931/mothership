@@ -39,10 +39,10 @@ actor DemoAgentEngine: AgentEngineProtocol {
     init() {
         pendingScripts = Self.scripts()
         integrations = [
-            IntegrationStatus(kind: .claude, executablePath: "/opt/homebrew/bin/claude", version: "2.1.306", installed: true, detail: "Hooks installed (13 events)"),
-            IntegrationStatus(kind: .codex, executablePath: "/opt/homebrew/bin/codex", version: "0.146.0", installed: true, detail: "hooks.json installed (8 events)"),
-            IntegrationStatus(kind: .opencode, executablePath: "/Users/demo/.opencode/bin/opencode", version: "1.0.74", installed: false, detail: "Plugin not installed"),
-            IntegrationStatus(kind: .gemini, executablePath: nil, version: nil, installed: false, detail: "Gemini CLI not found on PATH"),
+            IntegrationStatus(kind: .claude, executablePath: "/opt/homebrew/bin/claude", version: "2.1.306", installed: true, detail: "Hooks · 13 events"),
+            IntegrationStatus(kind: .codex, executablePath: "/opt/homebrew/bin/codex", version: "0.146.0", installed: true, detail: "Hooks overwritten by another tool · repair to restore 8 events"),
+            IntegrationStatus(kind: .opencode, executablePath: "/Users/demo/.opencode/bin/opencode", version: "1.0.74", installed: false, detail: "Plugin · not connected"),
+            IntegrationStatus(kind: .gemini, executablePath: nil, version: nil, installed: false, detail: "Not found on PATH"),
         ]
         for session in Self.externalSessions() {
             sessionsByKey[session.id] = session
@@ -290,6 +290,7 @@ actor DemoAgentEngine: AgentEngineProtocol {
                 Step(duration: 6) { session in
                     session.state = .working(tool: "Bash")
                     session.summary = "Running auth test suite"
+                    session.lastAssistantMessage = "Running the auth suite now. refresh.ts takes a Clock so the expiry cases are deterministic."
                 },
                 Step(duration: 18) { session in
                     session.state = .idle
@@ -317,6 +318,7 @@ actor DemoAgentEngine: AgentEngineProtocol {
                     session.lastUserPrompt = "Port the usage dashboard charts to Swift Charts"
                     session.state = .working(tool: "apply_patch")
                     session.summary = "Porting usage charts to Swift Charts"
+                    session.lastAssistantMessage = "Starting with UsageChart, the only one with custom axis formatting. CostChart and ContextGauge follow the same pattern."
                 },
                 Step(duration: 22) { session in
                     session.state = .idle
@@ -366,6 +368,7 @@ actor DemoAgentEngine: AgentEngineProtocol {
                     session.lastUserPrompt = "Apply only the cache policy change"
                     session.state = .working(tool: "Bash")
                     session.summary = "terraform apply -target=cache_policy"
+                    session.lastAssistantMessage = "Applying only the cache policy change; the other three resources stay untouched."
                 },
                 Step(duration: 30) { session in
                     session.state = .needsInput(.question)
@@ -382,6 +385,7 @@ actor DemoAgentEngine: AgentEngineProtocol {
                     session.lastUserPrompt = "The sliding-window limiter double counts on retries"
                     session.state = .working(tool: "edit")
                     session.summary = "Fixing double count in sliding window"
+                    session.lastAssistantMessage = "Found it: retries mint a fresh token, so the sliding window counts them twice. Reusing the original token instead."
                 },
                 Step(duration: 20) { session in
                     session.state = .idle
@@ -393,24 +397,42 @@ actor DemoAgentEngine: AgentEngineProtocol {
         return [claudeRefactor, codexCharts, geminiDocs, claudeInfra, opencodeAPI]
     }
 
+    /// Dev servers for Home's Ports panel.
+    static let demoPorts: [ListeningPort] = [
+        ListeningPort(port: 3000, process: "node · vite", workspaceName: "web-dashboard"),
+        ListeningPort(port: 8080, process: "go · gateway", workspaceName: "api-gateway"),
+        ListeningPort(port: 5432, process: "postgres", workspaceName: nil),
+    ]
+
     private static func externalSessions() -> [AgentSession] {
         [
             AgentSession(
                 id: AgentSessionKey(kind: .claude, sessionID: "ext-vscode-1"), hostApp: "Visual Studio Code",
                 pid: 41022, cwd: "~/code/landing-page", branch: "redesign", state: .working(tool: "Edit"),
-                title: "Hero section polish", summary: "Tightening hero copy and spacing", model: "claude-sonnet-4-5",
+                title: "Hero section polish", summary: "Tightening hero copy and spacing",
+                lastUserPrompt: "Make the hero feel calmer: less copy, more air",
+                lastAssistantMessage: "Cut the subhead to one line and doubled the top padding. Trying a serif for the headline next.",
+                model: "claude-sonnet-4-5",
+                usage: TokenUsage(inputTokens: 182_000, outputTokens: 21_400, cacheReadTokens: 1_240_000, costUSD: 2.84, contextTokens: 64000, contextWindow: 200_000),
                 startedAt: Date().addingTimeInterval(-1800)
             ),
             AgentSession(
                 id: AgentSessionKey(kind: .codex, sessionID: "ext-iterm-1"), hostApp: "iTerm2", pid: 38810,
                 cwd: "~/code/payments", branch: "migrate-ledger", state: .needsInput(.question),
-                title: "Ledger migration", summary: "Asks: online or offline migration?", model: "gpt-5-codex",
+                title: "Ledger migration", summary: "Asks: online or offline migration?",
+                lastUserPrompt: "Plan the ledger table migration",
+                lastAssistantMessage: "Two options: an online backfill (no downtime, ~40 min) or a 3-minute maintenance window. Which do you prefer?",
+                model: "gpt-5-codex",
+                usage: TokenUsage(inputTokens: 96000, outputTokens: 8800, costUSD: 1.12, contextTokens: 41000, contextWindow: 272_000),
                 startedAt: Date().addingTimeInterval(-5400), unread: true
             ),
             AgentSession(
                 id: AgentSessionKey(kind: .opencode, sessionID: "ext-tmux-1"), hostApp: "tmux", pid: 29911,
                 cwd: "~/code/dotfiles", state: .idle, title: "Neovim LSP config",
-                summary: "Switched to native LSP config", startedAt: Date().addingTimeInterval(-9000)
+                summary: "Switched to native LSP config",
+                lastAssistantMessage: "Moved every server to vim.lsp.config; startup is 38 ms faster.",
+                usage: TokenUsage(inputTokens: 31000, outputTokens: 4100, costUSD: 0.21, contextTokens: 18000, contextWindow: 128_000),
+                startedAt: Date().addingTimeInterval(-9000)
             ),
         ]
     }

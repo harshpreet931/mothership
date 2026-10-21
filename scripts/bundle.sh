@@ -38,6 +38,8 @@ cp "$BIN/mship" "$CONTENTS/MacOS/mship"
 shopt -s nullglob
 for bundle in "$BIN"/*.bundle; do
     name="$(basename "$bundle")"
+    # Test targets' resources never ship.
+    [[ "$name" == *Tests.bundle ]] && continue
     cp -R "$bundle" "$CONTENTS/Resources/"
     accessor="$(grep -rl --include=resource_bundle_accessor.swift "$name" "$BIN" 2>/dev/null | head -n 1 || true)"
     if [[ -n "$accessor" ]] && grep -q 'Bundle.main.bundleURL' "$accessor"; then

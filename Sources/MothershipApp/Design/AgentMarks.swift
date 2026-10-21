@@ -22,16 +22,14 @@ struct AgentMarkShape: Shape {
             }
             return path.strokedPath(StrokeStyle(lineWidth: s * 0.11, lineCap: .round))
         case .codex:
+            // Three interlaced loops: reads as the OpenAI knot at 13 pt without copying it.
             var path = Path()
-            for index in 0 ..< 6 {
-                let angle = Double(index) * .pi / 3
-                let link = Path(roundedRect: CGRect(x: -s * 0.12, y: -s * 0.27, width: s * 0.24, height: s * 0.42), cornerRadius: s * 0.12)
-                let transform = CGAffineTransform(translationX: c.x, y: c.y)
-                    .rotated(by: angle)
-                    .translatedBy(x: s * 0.14, y: -s * 0.04)
-                path.addPath(link, transform: transform)
+            for index in 0 ..< 3 {
+                let loop = Path(roundedRect: CGRect(x: -s * 0.2, y: -s * 0.44, width: s * 0.4, height: s * 0.88), cornerRadius: s * 0.2)
+                let transform = CGAffineTransform(translationX: c.x, y: c.y).rotated(by: Double(index) * .pi / 3)
+                path.addPath(loop, transform: transform)
             }
-            return path.strokedPath(StrokeStyle(lineWidth: s * 0.075, lineJoin: .round))
+            return path.strokedPath(StrokeStyle(lineWidth: s * 0.085, lineJoin: .round))
         case .opencode:
             var path = Path()
             let top = c.y - s * 0.34, bottom = c.y + s * 0.34
@@ -117,8 +115,8 @@ struct WorkingArc: View {
 
     var body: some View {
         Circle()
-            .trim(from: 0, to: 0.28)
-            .stroke(color.opacity(0.85), style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+            .trim(from: 0, to: 0.22)
+            .stroke(color.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
             .rotationEffect(.degrees(spin ? 360 : 0))
             .onAppear {
                 guard !reduceMotion else { return }

@@ -9,6 +9,7 @@ enum AppCommand: String, CaseIterable {
     case splitRight, splitDown, openBrowser, closePane, zoomPane, equalizeSplits
     case focusLeft, focusRight, focusUp, focusDown
     case nextWorkspace, previousWorkspace, jumpToAttention
+    case home, fleet, toggleComposer
     case toggleSidebar, commandPalette, settings
     case increaseFontSize, decreaseFontSize, resetFontSize
     case clearScreen
@@ -31,6 +32,9 @@ enum AppCommand: String, CaseIterable {
         case .nextWorkspace: "Next Workspace"
         case .previousWorkspace: "Previous Workspace"
         case .jumpToAttention: "Jump to Agent Needing Attention"
+        case .home: "Home"
+        case .fleet: "Fleet"
+        case .toggleComposer: "Toggle Composer"
         case .toggleSidebar: "Toggle Sidebar"
         case .commandPalette: "Command Palette…"
         case .settings: "Settings…"
@@ -59,6 +63,9 @@ enum AppCommand: String, CaseIterable {
         case .nextWorkspace: "chevron.down"
         case .previousWorkspace: "chevron.up"
         case .jumpToAttention: "bell.badge"
+        case .home: "house"
+        case .fleet: "square.grid.2x2"
+        case .toggleComposer: "text.bubble"
         case .toggleSidebar: "sidebar.left"
         case .commandPalette: "command"
         case .settings: "gearshape"
@@ -88,12 +95,15 @@ enum AppCommand: String, CaseIterable {
         case .nextWorkspace: ("]", [.command, .shift])
         case .previousWorkspace: ("[", [.command, .shift])
         case .jumpToAttention: ("u", [.command, .shift])
+        case .home: ("0", .command)
+        case .fleet: ("f", [.command, .shift])
+        case .toggleComposer: ("l", .command)
         case .toggleSidebar: ("b", .command)
         case .commandPalette: ("k", .command)
         case .settings: (",", .command)
         case .increaseFontSize: ("+", .command)
         case .decreaseFontSize: ("-", .command)
-        case .resetFontSize: ("0", .command)
+        case .resetFontSize: ("0", [.command, .control])
         case .clearScreen: nil
         }
     }
@@ -166,6 +176,11 @@ final class CommandRouter: NSObject, NSMenuItemValidation {
         case .nextWorkspace: model.selectAdjacentWorkspace(1)
         case .previousWorkspace: model.selectAdjacentWorkspace(-1)
         case .jumpToAttention: model.jumpToAttention()
+        case .home: model.toggleHome()
+        case .fleet: model.show(model.screen == .fleet ? .workspaces : .fleet)
+        case .toggleComposer:
+            withAnimationIfAllowed { model.isComposerVisible.toggle() }
+            if model.isComposerVisible { model.composerFocusRequest += 1 }
         case .toggleSidebar: windowController?.toggleSidebar()
         case .commandPalette: model.isPalettePresented.toggle()
         case .settings: openSettings()
@@ -197,6 +212,15 @@ final class CommandRouter: NSObject, NSMenuItemValidation {
             return model.workspaces.count > 1
         case .toggleSidebar:
             item.title = windowController?.isSidebarCollapsed == true ? "Show Sidebar" : "Hide Sidebar"
+            return true
+        case .home:
+            item.state = model.screen == .home ? .on : .off
+            return true
+        case .fleet:
+            item.state = model.screen == .fleet ? .on : .off
+            return true
+        case .toggleComposer:
+            item.title = model.isComposerVisible ? "Hide Composer" : "Show Composer"
             return true
         case .clearScreen:
             return model.focusedSurface?.terminal != nil

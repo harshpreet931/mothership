@@ -5,7 +5,7 @@ import ShipModel
 /// changes; pane containers (and the terminals inside them) are reused across rebuilds.
 @MainActor
 final class WorkspaceView: NSView {
-    static let inset: CGFloat = 6
+    static let inset: CGFloat = 0
 
     let workspace: Workspace
     private unowned let model: AppModel
@@ -109,6 +109,8 @@ final class WorkspaceView: NSView {
         let focused = workspace.focusedSurface?.id
         _ = model.appearanceVersion
         let background = model.runtime.backgroundColor
+        let dark = model.chromeIsDark
+        let tint = model.tintWithSky
         for (id, container) in containers {
             guard let surface = workspace.surfaces[id] else { continue }
             if container.content !== surface.contentView { container.setContent(surface.contentView) }
@@ -116,12 +118,29 @@ final class WorkspaceView: NSView {
             let resume = surface.resumeOffer.map { key in
                 (key: key, title: model.sessions.first { $0.id == key }?.title)
             }
+            let session = model.sessions(on: id).first
+            // Browser panes bring their own toolbar; only terminals get the hover capsule.
+            let chrome = surface.kind == .terminal
+                ? PaneChromeModel(
+                    title: session?.title ?? surface.meaningfulTitle ?? PathDisplay.short(surface.cwd ?? workspace.currentDirectory),
+                    session: session, pinned: session.map { $0.state.isWorking || $0.needsYou } ?? false
+                )
+                : nil
+            let workspaceID = workspace.id
             container.update(
-                focused: isFocused, showFocusRing: multiplePanes, dimmed: multiplePanes && !isFocused,
-                attention: model.paneNeedsAttention(id), background: surface.kind == .terminal ? background : .windowBackgroundColor,
-                progress: surface.progress, resume: resume,
-                onResume: { [weak model] in model?.resume(id) },
-                onDismiss: { [weak model] in model?.dismissResume(id) }
+                focused: isFocused && multiplePanes, dimmed: multiplePanes && !isFocused,
+                attention: model.paneNeedsAttention(id),
+                background: surface.kind == .terminal ? background : .skyBubble, tint: tint && surface.kind == .terminal,
+                progress: surface.progress, resume: resume, chrome: chrome, dark: dark,
+                actions: PaneActions(
+                    onResume: { [weak model] in model?.resume(id) },
+                    onDismissResume: { [weak model] in model?.dismissResume(id) },
+                    onSplitRight: { [weak model] in model?.split(id, direction: .right) },
+                    onSplitDown: { [weak model] in model?.split(id, direction: .down) },
+                    onClose: { [weak model] in
+                        if model?.workspace(id: workspaceID) != nil { model?.closeSurface(id) }
+                    }
+                )
             )
         }
     }

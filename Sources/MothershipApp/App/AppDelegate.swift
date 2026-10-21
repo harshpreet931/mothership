@@ -9,7 +9,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let environment = ProcessInfo.processInfo.environment
     private(set) var model: AppModel?
     private(set) var windowController: MainWindowController?
-    private var settingsController: SettingsWindowController?
     private var router: CommandRouter?
     private var services: AppServices?
 
@@ -70,26 +69,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         services.start()
         NSApp.activate()
 
-        if let path = environment["MOTHERSHIP_SNAPSHOT"], !path.isEmpty {
-            // MOTHERSHIP_SNAPSHOT_PALETTE=1 opens ⌘K first, to check the palette too.
-            if environment["MOTHERSHIP_SNAPSHOT_PALETTE"] == "1" {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { model.isPalettePresented = true }
-            }
-            DebugSnapshot.schedule(to: path, window: windowController)
+        if isDemo {
+            model.portsProvider = { DemoAgentEngine.demoPorts }
         }
-        // MOTHERSHIP_SNAPSHOT_SETTINGS=/path.png: open Settings (tab index in
-        // MOTHERSHIP_SNAPSHOT_SETTINGS_TAB) and capture it too.
-        if let path = environment["MOTHERSHIP_SNAPSHOT_SETTINGS"], !path.isEmpty {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-                self?.showSettings()
-                let tab = Int(self?.environment["MOTHERSHIP_SNAPSHOT_SETTINGS_TAB"] ?? "") ?? 0
-                (self?.settingsController?.window?.contentViewController as? NSTabViewController)?.selectedTabViewItemIndex = tab
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { [weak self] in
-                guard let window = self?.settingsController?.window else { return }
-                let ok = DebugSnapshot.captureContent(of: window, to: URL(fileURLWithPath: path))
-                NSLog("Mothership: settings snapshot %@", ok ? path : "failed")
-            }
+        // Debug aids for verifying UI (see DebugSnapshot): MOTHERSHIP_SKY picks a sky without
+        // saving it; MOTHERSHIP_SNAPSHOT_VIEW opens home | fleet | palette | settings[:tab].
+        if let sky = environment["MOTHERSHIP_SKY"].flatMap(SkyPreset.init(rawValue:)) {
+            model.persistsSky = false
+            model.skyPreset = sky
+        }
+        if let path = environment["MOTHERSHIP_SNAPSHOT"], !path.isEmpty {
+            DebugSnapshot.prepareView(environment["MOTHERSHIP_SNAPSHOT_VIEW"], model: model)
+            DebugSnapshot.schedule(to: path, window: windowController)
         }
         // MOTHERSHIP_DEBUG_INPUT="cmd": pasted + Enter into the focused pane after launch; the
         // pane's screen text is logged with the snapshot (exercises paste/sendKey/readScreen).
@@ -124,13 +115,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
+    /// Settings is a page in the main window (Sky: Hark's Accounts pattern).
     private func showSettings() {
-        guard let model else { return }
-        if settingsController == nil {
-            settingsController = SettingsWindowController(model: model)
-        }
-        settingsController?.showWindow(nil)
-        settingsController?.window?.makeKeyAndOrderFront(nil)
+        model?.openSettings()
+        windowController?.window?.makeKeyAndOrderFront(nil)
     }
 }
 

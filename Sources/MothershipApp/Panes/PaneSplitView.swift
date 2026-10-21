@@ -5,7 +5,7 @@ import ShipModel
 /// window resize keeps proportions); the gaps between children are the draggable dividers.
 @MainActor
 final class PaneSplitView: NSView {
-    static let gap: CGFloat = 6
+    static let gap: CGFloat = Sky.gutter
     static let minimumPaneLength: CGFloat = 90
 
     let axis: SplitAxis

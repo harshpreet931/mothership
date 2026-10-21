@@ -38,6 +38,8 @@ enum Sky {
     static let secondary = Color(nsColor: .skyInk.withAlphaComponent(0.56))
     static let tertiary = Color(nsColor: .skyInk.withAlphaComponent(0.36))
     static let glassFill = Color(nsColor: .skyGlassFill)
+    /// Glass over busy content (terminal text): the §9 scrim, folded into the tint.
+    static let glassDense = Color(nsColor: .skyGlassDense)
     static let glassHighlight = Color(nsColor: .skyGlassHighlight)
     static let bubble = Color(nsColor: .skyBubble)
     static let bubbleUser = Color(nsColor: .skyBubbleUser)
@@ -71,6 +73,7 @@ extension NSColor {
     static let skyInk = dynamic(light: rgb(0x0D0E11), dark: rgb(0xF4F5F7))
     static let skyOnInk = dynamic(light: rgb(0xFFFFFF), dark: rgb(0x0D0E11))
     static let skyGlassFill = dynamic(light: rgb(0xFFFFFF, 0.55), dark: rgb(0x14161B, 0.55))
+    static let skyGlassDense = dynamic(light: rgb(0xF7F9FC, 0.9), dark: rgb(0x16181E, 0.9))
     static let skyGlassHighlight = dynamic(light: rgb(0xFFFFFF, 0.70), dark: rgb(0xFFFFFF, 0.08))
     static let skyBubble = dynamic(light: rgb(0xFFFFFF), dark: rgb(0x1D1F25))
     static let skyBubbleUser = dynamic(light: rgb(0xFFFFFF, 0.40), dark: rgb(0xFFFFFF, 0.10))

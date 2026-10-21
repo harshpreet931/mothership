@@ -55,6 +55,45 @@ final class AppModel {
     /// Bumped when the terminal theme/font changes so chrome can re-tint.
     var appearanceVersion = 0
 
+    // MARK: Sky state
+
+    /// Which full-window view is showing.
+    var screen: AppScreen = .workspaces
+    var settingsTab: SettingsTab = .agents
+    var skyPreset: SkyPreset = SkyPreset(rawValue: UserDefaults.standard.string(forKey: PreferenceKey.sky) ?? "") ?? .auto {
+        didSet { if persistsSky { UserDefaults.standard.set(skyPreset.rawValue, forKey: PreferenceKey.sky) } }
+    }
+    /// Off when a debug override (MOTHERSHIP_SKY) picks the sky.
+    @ObservationIgnored var persistsSky = true
+    /// The system's appearance, which `auto` follows.
+    var systemIsDark = true
+    var isComposerVisible = UserDefaults.standard.object(forKey: PreferenceKey.composerVisible) as? Bool ?? true {
+        didSet { UserDefaults.standard.set(isComposerVisible, forKey: PreferenceKey.composerVisible) }
+    }
+    /// Terminal cards at 88 % with a blur behind them (§8 "Tint with sky").
+    var tintWithSky = UserDefaults.standard.bool(forKey: PreferenceKey.tintWithSky) {
+        didSet {
+            UserDefaults.standard.set(tintWithSky, forKey: PreferenceKey.tintWithSky)
+            runtime.backgroundOpacity = tintWithSky ? 0.88 : 1
+        }
+    }
+    /// In-app attention stack (top right), newest first.
+    var toasts: [AttentionToast] = []
+    /// Listening dev servers for the Home "Ports" panel.
+    var ports: [ListeningPort] = []
+    /// Prompts held until their agent goes idle (⇧⏎ in the composer).
+    var composerQueue: [QueuedPrompt] = []
+    /// Agent launched by "Start a task…".
+    var composerAgent: AgentKind = .claude
+    var composerBroadcast = false
+    /// Bumped to move keyboard focus into the composer (⌘L, "Start a task").
+    var composerFocusRequest = 0
+    /// Sessions whose permission was just decided from the UI, shown as a ✓ for a moment.
+    var recentlyResolved: [AgentSessionKey: PermissionDecisionKind] = [:]
+    /// Supplies listening ports (SystemProbe in the real app, fixtures in demo mode).
+    @ObservationIgnored var portsProvider: (() async -> [ListeningPort])?
+    @ObservationIgnored private var portsTask: Task<Void, Never>?
+
     @ObservationIgnored private var updatesTask: Task<Void, Never>?
     @ObservationIgnored private var gitTimer: Timer?
     @ObservationIgnored private var lastAttentionContext: AttentionContext?
@@ -68,6 +107,7 @@ final class AppModel {
         runtime.onConfigurationChange = { [weak self] in
             self?.appearanceVersion += 1
         }
+        if tintWithSky { runtime.backgroundOpacity = 0.88 }
     }
 
     // MARK: Lifecycle
@@ -88,6 +128,15 @@ final class AppModel {
         }
         gitTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.refreshGitInfo() }
+        }
+        portsTask = Task { [weak self] in
+            while !Task.isCancelled {
+                if let provider = self?.portsProvider {
+                    let ports = await provider()
+                    if self?.ports != ports { self?.ports = ports }
+                }
+                try? await Task.sleep(for: .seconds(5))
+            }
         }
     }
 
@@ -197,6 +246,8 @@ final class AppModel {
             selectedWorkspaceID = id
             scheduleSave()
         }
+        // Choosing a workspace always shows its panes.
+        if screen != .workspaces { screen = .workspaces }
         renamingWorkspaceID = renamingWorkspaceID == id ? id : nil
         if let focused = workspace.focusedSurface {
             requestFocus(focused.id)
@@ -339,6 +390,7 @@ final class AppModel {
         if selectedWorkspaceID != workspace.id {
             selectWorkspace(workspace.id)
         } else {
+            if screen != .workspaces { screen = .workspaces }
             requestFocus(id)
         }
         surfaceDidFocus(id)
@@ -401,6 +453,15 @@ final class AppModel {
 
     /// For notification actions, which carry only the request ID.
     func resolvePermission(id: PermissionRequestID, decision: PermissionDecision) {
+        // The card collapses into a ✓ (or ✕) for a beat before it disappears.
+        if let key = sessions.first(where: { $0.pendingPermission?.id == id })?.id {
+            withAnimationIfAllowed { recentlyResolved[key] = decision == .allow ? .allowed : .denied }
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(1.4))
+                withAnimationIfAllowed { self?.recentlyResolved[key] = nil }
+            }
+        }
+        toasts.removeAll { $0.permissionID == id }
         let engine = self.engine
         Task { await engine.resolvePermission(id, decision: decision) }
     }
@@ -453,11 +514,15 @@ final class AppModel {
                 }
             }
             if changedBinding { scheduleSave() }
+            flushComposerQueue()
+            pruneToasts()
             onSessionsChanged?(list)
         case .attention(let event):
+            // In-app stack first; the hook (AttentionKit) decides about system banners.
+            enqueueToast(event)
             onAttention?(event)
-        case .permissionResolved:
-            break
+        case .permissionResolved(let id):
+            toasts.removeAll { $0.permissionID == id }
         case .integrations(let list):
             integrations = list
         }
@@ -479,6 +544,8 @@ final class AppModel {
             let engine = self.engine
             Task { await engine.markRead(surface: id) }
         }
+        // Seeing the pane is seeing its toasts (permission cards stay until decided).
+        toasts.removeAll { $0.surface == id && $0.permissionID == nil }
         pushAttentionContext()
     }
 
@@ -669,16 +736,3 @@ final class AppModel {
     }
 }
 
-extension AgentState {
-    var isNeedsInput: Bool {
-        if case .needsInput = self { return true }
-        return false
-    }
-
-    var isWorking: Bool {
-        switch self {
-        case .working, .starting: true
-        default: false
-        }
-    }
-}
