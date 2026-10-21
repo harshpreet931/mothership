@@ -28,7 +28,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, AppWindo
         window.minSize = NSSize(width: 640, height: 400)
         window.backgroundColor = .canvasShip
         window.contentViewController = root
-        window.setFrameAutosaveName("")
+        // Layout and frame come from Mothership's own state file, not AppKit restoration.
+        window.isRestorable = false
         super.init(window: window)
         // Keep the restored frame exactly; there is only ever one main window.
         shouldCascadeWindows = false

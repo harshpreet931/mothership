@@ -195,12 +195,14 @@ struct ContentHeader: View {
                 }
             }
             Spacer(minLength: 12)
-            HStack(spacing: 2) {
+            HStack(spacing: 0) {
                 headerButton("rectangle.split.2x1", help: "Split Right (⌘D)") { router.perform(.splitRight) }
                 headerButton("rectangle.split.1x2", help: "Split Down (⌘⇧D)") { router.perform(.splitDown) }
                 headerButton("safari", help: "Browser (⌘⇧B)") { router.perform(.openBrowser) }
                 headerButton("command", help: "Command Palette (⌘K)") { router.perform(.commandPalette) }
             }
+            .padding(.horizontal, 3)
+            .glassEffect(.regular, in: Capsule())
             .disabled(workspace == nil)
         }
         .padding(.leading, 14)
@@ -228,8 +230,8 @@ private struct HeaderIconButton: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 12.5, weight: .medium))
-                .frame(width: 28, height: 24)
-                .background(hovering ? Color.primary.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .frame(width: 30, height: 24)
+                .background(hovering ? Color.primary.opacity(0.09) : .clear, in: Capsule())
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
