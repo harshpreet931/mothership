@@ -118,6 +118,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_: NSApplication) -> Bool { true }
 
+    /// Asks first while agents or commands are running (AppModel.confirmQuit).
+    func applicationShouldTerminate(_: NSApplication) -> NSApplication.TerminateReply {
+        model?.confirmQuit() == false ? .terminateCancel : .terminateNow
+    }
+
     func applicationSupportsSecureRestorableState(_: NSApplication) -> Bool { true }
 
     func applicationDidBecomeActive(_: Notification) {

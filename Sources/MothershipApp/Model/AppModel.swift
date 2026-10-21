@@ -218,27 +218,33 @@ final class AppModel {
 
     // MARK: Workspaces
 
-    /// Creates a workspace with one terminal and selects it (when `focus`).
+    /// Creates a workspace with one terminal and selects it (when `focus`). Without a `cwd` it
+    /// opens in the focused project, else the most recent project, else home.
     @discardableResult
     func createWorkspace(
         cwd: String? = nil, name: String? = nil, command: String? = nil, focus: Bool = true,
         id: WorkspaceID = WorkspaceID(), insertAfterSelection: Bool = true
     ) -> (Workspace, PaneSurface) {
-        let directory = Self.resolveDirectory(cwd ?? focusedSurface?.terminal?.workingDirectory ?? focusedSurface?.cwd)
+        let fallback = focusedSurface?.terminal?.workingDirectory ?? focusedSurface?.cwd
+        let directory = Self.resolveDirectory(cwd ?? taskDirectory() ?? fallback)
         let surfaceID = SurfaceID()
+        let trimmedName = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let customName = trimmedName?.isEmpty == false ? trimmedName : nil
         let workspace = Workspace(
-            id: id, name: name ?? PathDisplay.folderName(directory), hasCustomName: name != nil,
+            id: id, name: customName ?? PathDisplay.folderName(directory), hasCustomName: customName != nil,
             rootDirectory: directory, layout: .leaf(surfaceID)
         )
-        let surface = makeSurface(id: surfaceID, kind: .terminal, workspace: workspace, cwd: directory, initialInput: command)
+        let surface = makeSurface(id: surfaceID, kind: .terminal, workspace: workspace, cwd: directory, startupCommand: command)
         workspace.surfaces[surfaceID] = surface
         workspace.focusedSurfaceID = surfaceID
-        workspace.refreshGit()
         if insertAfterSelection, let selected = selectedWorkspaceID, let index = workspaces.firstIndex(where: { $0.id == selected }) {
             workspaces.insert(workspace, at: index + 1)
         } else {
             workspaces.append(workspace)
         }
+        adoptForNaming(workspace)
+        workspace.refreshGit()
+        refreshWorkspaceNames()
         if focus || selectedWorkspaceID == nil {
             selectWorkspace(workspace.id)
         }
@@ -283,6 +289,7 @@ final class AppModel {
         let workspace = workspaces[index]
         for surface in workspace.surfaces.values { tearDown(surface) }
         workspaces.remove(at: index)
+        refreshWorkspaceNames()
         if selectedWorkspaceID == id {
             selectedWorkspaceID = nil
             if !workspaces.isEmpty {
@@ -307,11 +314,12 @@ final class AppModel {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
             workspace.hasCustomName = false
-            workspace.refreshGit()
+            workspace.restoredName = nil
         } else {
             workspace.name = trimmed
             workspace.hasCustomName = true
         }
+        refreshWorkspaceNames()
         renamingWorkspaceID = nil
         scheduleSave()
     }
@@ -345,7 +353,7 @@ final class AppModel {
         let anchorSurface = workspace.surfaces[anchor]
         let directory = Self.resolveDirectory(cwd ?? anchorSurface?.terminal?.workingDirectory ?? anchorSurface?.cwd ?? workspace.rootDirectory)
         let surfaceID = SurfaceID()
-        let surface = makeSurface(id: surfaceID, kind: kind, workspace: workspace, cwd: directory, initialInput: command, url: url)
+        let surface = makeSurface(id: surfaceID, kind: kind, workspace: workspace, cwd: directory, startupCommand: command, url: url)
         workspace.surfaces[surfaceID] = surface
         workspace.zoomedSurfaceID = nil
         workspace.layout = workspace.layout.inserting(surfaceID, beside: anchor, direction: direction)
@@ -520,6 +528,7 @@ final class AppModel {
                 }
             }
             if changedBinding { scheduleSave() }
+            refreshWorkspaceNames()
             flushComposerQueue()
             pruneToasts()
             onSessionsChanged?(list)
@@ -606,16 +615,19 @@ final class AppModel {
 
     // MARK: Surfaces
 
+    /// - Parameter startupCommand: Run by the user's login shell, which then stays as an
+    ///   interactive shell in the pane (nothing is typed; see `ShellLaunch`).
     func makeSurface(
-        id: SurfaceID, kind: SurfaceKind, workspace: Workspace, cwd: String?, initialInput: String? = nil,
+        id: SurfaceID, kind: SurfaceKind, workspace: Workspace, cwd: String?, startupCommand: String? = nil,
         url: URL? = nil
     ) -> PaneSurface {
         let surface = PaneSurface(id: id, kind: kind, workspaceID: workspace.id, cwd: cwd, url: url?.absoluteString)
         switch kind {
         case .terminal:
+            let launch = Self.terminalLaunch(startupCommand, environment: shellEnvironment)
             let terminal = TerminalSurfaceController(
-                surfaceID: id, workspaceID: workspace.id, workingDirectory: cwd, initialInput: initialInput,
-                environment: shellEnvironment, runtime: runtime
+                surfaceID: id, workspaceID: workspace.id, workingDirectory: cwd, command: launch.command,
+                initialInput: launch.typedInput, environment: launch.environment, runtime: runtime
             )
             terminal.onSignal = { [weak self] signal in self?.handleSignal(signal, from: id) }
             terminal.onFocusChange = { [weak self] focused in
@@ -640,6 +652,21 @@ final class AppModel {
         let workspaceID = workspace.id
         Task { await engine.surfaceOpened(id, workspace: workspaceID, cwd: cwd) }
         return surface
+    }
+
+    /// How a terminal pane starts: the plain login shell, or the login shell running a
+    /// command first. Shells without a usable `-c` (nu, xonsh…) get the command typed once
+    /// they're ready instead.
+    static func terminalLaunch(
+        _ startupCommand: String?, environment: [String: String], shell: String = ShellLaunch.userShell()
+    ) -> (command: String?, typedInput: String?, environment: [String: String]) {
+        guard let startupCommand = startupCommand?.trimmingCharacters(in: .whitespacesAndNewlines), !startupCommand.isEmpty else {
+            return (nil, nil, environment)
+        }
+        guard let wrapper = ShellLaunch.command(shell: shell) else {
+            return (nil, startupCommand, environment)
+        }
+        return (wrapper, nil, environment.merging(ShellLaunch.environment(running: startupCommand)) { _, new in new })
     }
 
     private func tearDown(_ surface: PaneSurface) {
@@ -733,10 +760,16 @@ final class AppModel {
             workspace.focusedSurfaceID = saved.focusedSurface.flatMap { workspace.surfaces[$0] != nil ? $0 : nil }
                 ?? layout.surfaceIDs.first
             workspace.currentDirectory = workspace.focusedSurface?.cwd ?? saved.rootDirectory
-            workspace.refreshGit()
-            if saved.hasCustomName { workspace.name = saved.name }
+            if !saved.hasCustomName {
+                // Keep the name it had (an agent's title, a " 2") until it moves or an agent names it.
+                workspace.restoredName = saved.name
+                workspace.restoredDirectory = workspace.currentDirectory
+            }
             workspaces.append(workspace)
+            adoptForNaming(workspace)
+            workspace.refreshGit()
         }
+        refreshWorkspaceNames()
         if let selected = snapshot.selectedWorkspace, workspace(id: selected) != nil {
             selectWorkspace(selected)
         } else if let first = workspaces.first {

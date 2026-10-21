@@ -79,6 +79,19 @@ final class Workspace: Identifiable {
     var git: GitInfo?
     /// Cwd of the focused terminal (what the sidebar shows).
     var currentDirectory: String
+    /// Creation order. When automatic names collide the older workspace keeps the plain name,
+    /// so names don't swap when rows are reordered.
+    let sequence: Int
+    /// An automatic name from the last session, kept after relaunch until the workspace moves
+    /// to another directory or an agent there reports a title.
+    var restoredName: String?
+    var restoredDirectory: String?
+    /// The model recomputes automatic names (they depend on every workspace) when the
+    /// directory or repo changes.
+    @ObservationIgnored var onNamingInputsChanged: (() -> Void)?
+    @ObservationIgnored private var namingKey: String?
+
+    private static var nextSequence = 0
 
     init(
         id: WorkspaceID = WorkspaceID(), name: String, hasCustomName: Bool = false, colorHex: String? = nil,
@@ -92,6 +105,8 @@ final class Workspace: Identifiable {
         self.rootDirectory = rootDirectory
         self.layout = layout
         self.currentDirectory = rootDirectory
+        Self.nextSequence += 1
+        self.sequence = Self.nextSequence
     }
 
     /// Leaves in visual order (left→right, top→bottom).
@@ -122,13 +137,22 @@ final class Workspace: Identifiable {
         )
     }
 
-    /// Re-reads git info for the current directory and refreshes the automatic name.
+    /// Re-reads git info for the current directory; tells the model when the automatic name
+    /// may need to change.
     func refreshGit() {
         let info = GitInfo.read(at: currentDirectory)
         if info != git { git = info }
-        if !hasCustomName {
-            let auto = info?.repoName ?? PathDisplay.folderName(currentDirectory)
-            if auto != name { name = auto }
+        let key = currentDirectory + "\u{0}" + (info?.repoName ?? "")
+        if key != namingKey {
+            namingKey = key
+            onNamingInputsChanged?()
         }
+    }
+
+    /// The repo name that may name this workspace. A git repo at `$HOME` (dotfiles) doesn't
+    /// count: everything under home would be named after it.
+    var namingRepoName: String? {
+        guard let git, git.root != PathDisplay.home else { return nil }
+        return git.repoName
     }
 }
