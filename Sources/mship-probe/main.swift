@@ -11,6 +11,8 @@ import SystemProbe
 //   swift run mship-probe --watch    stream updates and attention events (Ctrl-C to stop)
 //   swift run mship-probe --bench 50 time 50 system-wide scans
 //   --home <dir>                     read agent data from another home directory
+//   --watch --app-like [--hidden]    also open a pane surface (1 s pane scans), like the app;
+//                                    --hidden reports the app as in the background
 //
 // Read-only: it never installs integrations or writes to agent configs.
 
@@ -24,6 +26,8 @@ struct Options {
     var coldStart: Double?
     var latency: Int?
     var kqueue = true
+    var appLike = false
+    var hidden = false
 }
 
 func parseOptions() -> Options {
@@ -39,9 +43,11 @@ func parseOptions() -> Options {
         case "--titles": options.titles = true
         case "--latency": options.latency = arguments.popFirst().flatMap(Int.init) ?? 20
         case "--no-kqueue": options.kqueue = false
+        case "--app-like": options.appLike = true
+        case "--hidden": options.hidden = true
         case "--cold-start": options.coldStart = arguments.popFirst().flatMap(Double.init) ?? 6
         case "-h", "--help":
-            print("usage: mship-probe [--json] [--watch] [--bench N] [--home DIR] [--settle SECONDS]")
+            print("usage: mship-probe [--json] [--watch [--app-like] [--hidden]] [--bench N] [--home DIR] [--settle SECONDS]")
             exit(0)
         default:
             FileHandle.standardError.write(Data("unknown option \(argument)\n".utf8))
@@ -329,6 +335,12 @@ if options.json {
 guard options.watch else { exit(0) }
 
 print("\nWatching… (Ctrl-C to stop)")
+if options.appLike {
+    // What the app adds on top of this tool: an open pane, so the engine scans its own
+    // process tree every second, plus a subscriber on updates() (below).
+    await engine.surfaceOpened(SurfaceID(), workspace: WorkspaceID(), cwd: FileManager.default.currentDirectoryPath)
+}
+if options.hidden { await engine.setAppActive(false) }
 let cpuStart = cpuSeconds()
 let watchStart = Date()
 signal(SIGINT) { _ in exit(0) }
