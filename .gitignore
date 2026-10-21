@@ -6,3 +6,4 @@
 *.xcodeproj/xcuserdata/
 DerivedData/
 /References/
+/.claude/worktrees/
