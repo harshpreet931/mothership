@@ -123,18 +123,26 @@ public final class ControlClient: Sendable {
     /// notification and returns nil without waiting.
     public func send(_ request: RPCRequest, timeout: Duration? = .seconds(5)) throws(ControlClientError) -> RPCResponse? {
         let deadline = Deadline(timeout)
+        var line: Data
+        do {
+            line = try JSONEncoder.ship.encode(request)
+        } catch {
+            throw .encodingFailed(String(describing: error))
+        }
+        line.append(0x0A)
         return try session.withLock { (session) throws(ControlClientError) -> RPCResponse? in
-            let fd = try connectedDescriptor(deadline: deadline)
-            var line: Data
-            do {
-                line = try JSONEncoder.ship.encode(request)
+            do throws(ControlClientError) {
+                let fd = try connectedDescriptor(deadline: deadline)
+                try writeAll(line, to: fd, deadline: deadline)
+                guard let id = request.id else { return nil }
+                return try readResponse(id: id, from: fd, buffer: &session.buffer, deadline: deadline)
             } catch {
-                throw .encodingFailed(String(describing: error))
+                // After a timeout or I/O failure the stream may hold half a line or a late reply:
+                // start the next call on a fresh connection.
+                close()
+                session.buffer.removeAll()
+                throw error
             }
-            line.append(0x0A)
-            try writeAll(line, to: fd, deadline: deadline)
-            guard let id = request.id else { return nil }
-            return try readResponse(id: id, from: fd, buffer: &session.buffer, deadline: deadline)
         }
     }
 

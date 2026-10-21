@@ -71,6 +71,20 @@ public final class MCPServer: Sendable {
         guard let message = try? JSONDecoder.ship.decode(JSONValue.self, from: line) else {
             return try? RPCResponse(id: nil, error: .parseError()).encodedLine()
         }
+        // Batches were allowed in 2025-03-26.
+        if case .array(let items) = message {
+            guard !items.isEmpty else { return try? RPCResponse(id: nil, error: .invalidRequest("Empty batch")).encodedLine() }
+            var parts: [Data] = []
+            for item in items {
+                guard let data = item.compactText.map({ Data($0.utf8) }), let reply = await handle(line: data) else { continue }
+                parts.append(reply.dropLast())  // strip the newline
+            }
+            guard !parts.isEmpty else { return nil }
+            var batch = Data("[".utf8)
+            batch.append(Data(parts.joined(separator: Data(",".utf8))))
+            batch.append(contentsOf: Array("]\n".utf8))
+            return batch
+        }
         // Clients don't send us responses (we never send requests), but ignore them if they do.
         if message["method"] == nil, message["result"] != nil || message["error"] != nil { return nil }
         guard let request = try? message.decode(RPCRequest.self), request.jsonrpc == "2.0" else {

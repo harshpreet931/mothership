@@ -355,6 +355,9 @@ struct ControlClientTests {
                 try await client.requestAsync("slow", timeout: .milliseconds(150))
             }
             #expect(ContinuousClock.now - start < .seconds(1))
+            // The same client recovers on a fresh connection (no stale reply in the way).
+            let pong: PingResult = try await client.callAsync(.ping, OKResult())
+            #expect(pong.ok)
         }
     }
 

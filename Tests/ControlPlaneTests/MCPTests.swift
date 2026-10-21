@@ -278,6 +278,23 @@ struct MCPTests {
         }
     }
 
+    @Test func batchesAreSupported() async throws {
+        let line = Data(#"[{"jsonrpc":"2.0","id":1,"method":"ping"},{"jsonrpc":"2.0","method":"notifications/initialized"},{"jsonrpc":"2.0","id":2,"method":"tools/list"}]"#.utf8)
+        let reply = try #require(await offline.handle(line: line))
+        let items = try #require(try JSONDecoder.ship.decode(JSONValue.self, from: reply).arrayValue)
+        #expect(items.map { $0["id"]?.intValue } == [1, 2])
+        #expect(reply.last == 0x0A)
+    }
+
+    @Test func modernToolCallsAreStamped() async throws {
+        let result = try #require(await offline.handle(mcpRequest(1, "tools/call", [
+            "name": "notify_user", "arguments": ["title": "hi"], "_meta": modernMeta(),
+        ]))?.result)
+        #expect(result["resultType"] == "complete")
+        #expect(result["_meta"]?["io.modelcontextprotocol/serverInfo"]?["name"] == "mothership")
+        #expect(result.isToolError)  // the app isn't running in this test
+    }
+
     @Test func lineLevelErrors() async throws {
         let parse = try #require(await offline.handle(line: Data("{nope".utf8)))
         let decoded = try JSONDecoder.ship.decode(JSONValue.self, from: parse)
