@@ -1,4 +1,5 @@
 import AppKit
+import GitKit
 import Observation
 import ShipModel
 import ShipProtocol
@@ -48,6 +49,10 @@ final class AppModel {
     /// Every session the engine knows, in-app and external.
     var sessions: [AgentSession] = []
     var integrations: [IntegrationStatus] = []
+    /// New Task / Best-of-N runs (see AppModel+Tasks.swift).
+    var tasks: [AgentTask] = []
+    /// Open PRs per workspace branch, refreshed by the PR monitor.
+    var pullRequests: [WorkspaceID: PullRequestStatus] = [:]
     var isPalettePresented = false
     var appIsActive = true
     var renamingWorkspaceID: WorkspaceID?
