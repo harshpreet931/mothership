@@ -1,4 +1,94 @@
-import ShipModel
+import Darwin
+import Dispatch
+import Foundation
 import SessionHost
+import ShipModel
 
-print("mshipd")
+// mshipd: Mothership's session host. Owns pane PTYs so shells and agents outlive the app.
+//
+//   mshipd --serve --socket PATH [--log PATH] [--idle-exit SECONDS]   run the host (foreground)
+//   mshipd --launch --socket PATH [--log PATH]                        start --serve detached, exit
+//   mshipd --exec-child EXECUTABLE CWD ARGV0 [ARGS…]                  internal: PTY trampoline
+
+let arguments = Array(CommandLine.arguments.dropFirst())
+
+// The trampoline runs first and touches nothing else: it's the session's process-to-be.
+if arguments.first == PTYSpawner.childFlag {
+    PTYSpawner.runChild(arguments)
+}
+
+func value(_ flag: String) -> String? {
+    guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+    return arguments[index + 1]
+}
+
+let socketPath = value("--socket") ?? SessionHostPaths.socket
+let logPath = value("--log")
+let executable: String = {
+    var size: UInt32 = 0
+    _ = _NSGetExecutablePath(nil, &size)
+    var buffer = [CChar](repeating: 0, count: Int(size) + 1)
+    guard _NSGetExecutablePath(&buffer, &size) == 0 else { return CommandLine.arguments[0] }
+    let bytes = buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+    return URL(fileURLWithPath: String(decoding: bytes, as: UTF8.self)).standardizedFileURL.path
+}()
+
+if arguments.contains("--launch") {
+    // Double spawn: the host becomes its own session, parented by launchd once we exit.
+    var serve = [executable, "--serve", "--socket", socketPath]
+    if let logPath { serve += ["--log", logPath] }
+    if let idle = value("--idle-exit") { serve += ["--idle-exit", idle] }
+    do {
+        _ = try SessionHostLauncher.spawnDetached(
+            executable, arguments: serve, environment: ProcessInfo.processInfo.environment,
+            logPath: logPath ?? "/dev/null"
+        )
+        exit(0)
+    } catch {
+        fputs("mshipd: \(error)\n", stderr)
+        exit(1)
+    }
+}
+
+guard arguments.contains("--serve") else {
+    fputs("usage: mshipd --serve --socket PATH [--log PATH] [--idle-exit SECONDS]\n", stderr)
+    exit(2)
+}
+
+signal(SIGPIPE, SIG_IGN)
+signal(SIGHUP, SIG_IGN)
+
+let log: @Sendable (String) -> Void = { message in
+    let line = "\(ISO8601DateFormatter().string(from: Date())) mshipd[\(getpid())] \(message)\n"
+    FileHandle.standardError.write(Data(line.utf8))
+}
+
+let idleSeconds = value("--idle-exit").flatMap(Double.init) ?? 10
+let server = SessionHostServer(configuration: SessionHostServer.Configuration(
+    socketPath: socketPath, trampoline: executable,
+    idleExit: idleSeconds > 0 ? .milliseconds(Int(idleSeconds * 1000)) : nil, log: log
+))
+server.onExit = {
+    log("exiting")
+    exit(0)
+}
+
+// SIGTERM ends every session (the PTYs close with the process anyway; this reaps cleanly).
+let terminate = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+signal(SIGTERM, SIG_IGN)
+terminate.setEventHandler {
+    log("SIGTERM: stopping")
+    server.stop()
+    exit(0)
+}
+terminate.resume()
+
+do {
+    try server.start()
+} catch {
+    log("\(error)")
+    // Another host already serves this socket: that's success for whoever launched us.
+    if case .alreadyRunning = error { exit(0) }
+    exit(1)
+}
+dispatchMain()
