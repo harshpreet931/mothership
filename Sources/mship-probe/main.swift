@@ -22,6 +22,8 @@ struct Options {
     var settle: Double = 1.5
     var titles = false
     var coldStart: Double?
+    var latency: Int?
+    var kqueue = true
 }
 
 func parseOptions() -> Options {
@@ -35,6 +37,8 @@ func parseOptions() -> Options {
         case "--home": options.home = arguments.popFirst().map { URL(fileURLWithPath: $0, isDirectory: true) }
         case "--settle": options.settle = arguments.popFirst().flatMap(Double.init) ?? options.settle
         case "--titles": options.titles = true
+        case "--latency": options.latency = arguments.popFirst().flatMap(Int.init) ?? 20
+        case "--no-kqueue": options.kqueue = false
         case "--cold-start": options.coldStart = arguments.popFirst().flatMap(Double.init) ?? 6
         case "-h", "--help":
             print("usage: mship-probe [--json] [--watch] [--bench N] [--home DIR] [--settle SECONDS]")
@@ -151,6 +155,75 @@ var configuration = AgentEngineConfiguration.standard
 if let home = options.home { configuration.homeDirectory = home }
 let engine = AgentEngine(configuration: configuration)
 
+if let rounds = options.latency {
+    // Transcript write → `updates()` emission, on a synthetic session in a scratch home.
+    let home = URL(fileURLWithPath: NSTemporaryDirectory()).appending(path: "mship-latency-\(UUID().uuidString)", directoryHint: .isDirectory)
+    defer { try? FileManager.default.removeItem(at: home) }
+    let pid = getpid()
+    let sessionID = "1a7e2c70-0000-4000-8000-00000000000a"
+    let cwd = "/work/latency"
+    let transcript = home.appending(path: ".claude/projects/-work-latency/\(sessionID).jsonl")
+    try? FileManager.default.createDirectory(at: transcript.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try? FileManager.default.createDirectory(at: home.appending(path: ".claude/sessions"), withIntermediateDirectories: true)
+    let iso = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+    func line(prompt: Bool, n: Int) -> String {
+        let stamp = Date().formatted(iso)
+        if prompt {
+            return #"{"type":"user","message":{"role":"user","content":"step \#(n)"},"timestamp":"\#(stamp)","cwd":"\#(cwd)","sessionId":"\#(sessionID)"}"# + "\n"
+        }
+        return #"{"type":"assistant","message":{"id":"m\#(n)","role":"assistant","model":"claude-opus-5-5","content":[{"type":"text","text":"done \#(n)"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}},"timestamp":"\#(stamp)","sessionId":"\#(sessionID)"}"# + "\n"
+    }
+    try? Data(line(prompt: false, n: 0).utf8).write(to: transcript)
+    let millis = Int(Date().timeIntervalSince1970 * 1000)
+    try? Data(#"{"pid":\#(pid),"sessionId":"\#(sessionID)","cwd":"\#(cwd)","status":"idle","nameSource":"derived","updatedAt":\#(millis),"statusUpdatedAt":\#(millis)}"#.utf8)
+        .write(to: home.appending(path: ".claude/sessions/\(pid).json"))
+    var configuration = AgentEngineConfiguration.isolated(home: home)
+    configuration.transcriptWatching = true
+    configuration.processScanning = true
+    configuration.vnodeWatching = options.kqueue
+    let started = UInt64(Date().addingTimeInterval(-60).timeIntervalSince1970 * 1_000_000)
+    let snapshot = ProcessSnapshot(pid: pid, ppid: 1, comm: "claude", startMicros: started)
+    let observed = ObservedProcess(snapshot: snapshot, arguments: ProcessArguments(executablePath: "/x/claude/versions/2.1.306", arguments: ["claude"]), cwd: cwd)
+    let binding = ClaudeAdapter().bindSession(observed, context: BindingContext(home: home, table: ProcessTable(processes: [snapshot])))
+    let root = RootProcess(kind: .claude, process: observed, binding: binding)
+    configuration.processProvider = { _ in [root] }
+    let probeEngine = AgentEngine(configuration: configuration)
+    let key = AgentSessionKey(kind: .claude, sessionID: sessionID)
+    let observations = Observations()
+    let stream = probeEngine.updates()
+    let consumer = Task {
+        for await update in stream {
+            if case .sessions(let sessions) = update, let session = sessions.first(where: { $0.id == key }) {
+                await observations.record(session.state)
+            }
+        }
+    }
+    await probeEngine.start()
+    try? await Task.sleep(for: .seconds(1))
+    var samples: [Double] = []
+    for round in 1...rounds {
+        let prompt = round % 2 == 1
+        let expected: AgentState = prompt ? .working(tool: nil) : .idle
+        let mark = await observations.count
+        let handle = try? FileHandle(forWritingTo: transcript)
+        _ = try? handle?.seekToEnd()
+        let written = Date()
+        try? handle?.write(contentsOf: Data(line(prompt: prompt, n: round).utf8))
+        try? handle?.close()
+        if let seen = await observations.wait(for: expected, after: mark, timeout: 5) {
+            samples.append(seen.timeIntervalSince(written) * 1000)
+        }
+        try? await Task.sleep(for: .milliseconds(150))
+    }
+    consumer.cancel()
+    await probeEngine.stop()
+    let sorted = samples.sorted()
+    func percentile(_ p: Double) -> Double { sorted.isEmpty ? .nan : sorted[min(sorted.count - 1, Int(Double(sorted.count - 1) * p))] }
+    let mode = options.kqueue ? "kqueue" : "polling (\(configuration.transcriptPollInterval)s)"
+    print(String(format: "latency (%@), %d/%d writes observed: min %.1f ms, median %.1f ms, p95 %.1f ms, max %.1f ms", mode, samples.count, rounds, sorted.first ?? .nan, percentile(0.5), percentile(0.95), sorted.last ?? .nan))
+    exit(0)
+}
+
 if let count = options.bench {
     // Warm-up: the first scan reads argv for every candidate and loads live transcripts.
     let cpuWarm = cpuSeconds()
@@ -247,7 +320,9 @@ if options.json {
     printTable(sessions, estimates: estimates)
     printIntegrations(integrations)
     printMetrics(metrics)
-    print(await engine.transcriptPolling ? "Transcripts: FSEvents unavailable on this host — polling tracked files every \(configuration.transcriptPollInterval)s" : "Transcripts: FSEvents")
+    let watched = await engine.metrics.watchedPaths
+    let fsevents = await engine.transcriptPolling ? "FSEvents unavailable on this host" : "FSEvents"
+    print("Transcripts: \(fsevents); kqueue watching \(watched) paths; safety poll every \(watched > 0 ? configuration.safetyPollInterval : configuration.transcriptPollInterval)s")
     for error in engine.manifestErrors { print("manifest: \(error)") }
 }
 
@@ -285,5 +360,24 @@ for await update in engine.updates() {
         print("\(stamp) [permission resolved] \(id)")
     case .integrations(let statuses):
         print("\(stamp) [integrations] " + statuses.map { "\($0.kind.rawValue)=\($0.installed ? "installed" : "no")" }.joined(separator: " "))
+    }
+}
+
+/// State changes seen on `updates()`, with arrival times.
+actor Observations {
+    private var seen: [(AgentState, Date)] = []
+    var count: Int { seen.count }
+
+    func record(_ state: AgentState) {
+        if seen.last?.0 != state { seen.append((state, Date())) }
+    }
+
+    func wait(for state: AgentState, after mark: Int, timeout: Double) async -> Date? {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let hit = seen.dropFirst(mark).first(where: { $0.0 == state }) { return hit.1 }
+            try? await Task.sleep(for: .milliseconds(2))
+        }
+        return nil
     }
 }

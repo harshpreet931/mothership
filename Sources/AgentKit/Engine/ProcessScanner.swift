@@ -17,6 +17,20 @@ public struct RootProcess: Sendable {
     public var cpuFraction: Double?
 
     public var pid: Int32 { process.pid }
+
+    public init(
+        kind: AgentKind, process: ObservedProcess, surface: SurfaceID? = nil, workspace: WorkspaceID? = nil, hostApp: String? = nil,
+        git: GitInfo? = nil, binding: SessionBinding? = nil, cpuFraction: Double? = nil
+    ) {
+        self.kind = kind
+        self.process = process
+        self.surface = surface
+        self.workspace = workspace
+        self.hostApp = hostApp
+        self.git = git
+        self.binding = binding
+        self.cpuFraction = cpuFraction
+    }
 }
 
 public enum ScanScope: Sendable, Equatable {

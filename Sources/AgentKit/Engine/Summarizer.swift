@@ -40,15 +40,7 @@ public struct HeuristicSummarizer: SessionSummarizer {
         case .idle, .ended:
             text = session.lastAssistantMessage.flatMap { TitleCleaner.firstSentence($0, limit: maxLength) } ?? session.title
         }
-        return text.map { TextSummary.oneLine(Self.abbreviatingHome($0), limit: maxLength) }
-    }
-
-    static let home = FileManager.default.homeDirectoryForCurrentUser.path
-
-    /// "/Users/me/Downloads/x.mp4" → "~/Downloads/x.mp4".
-    static func abbreviatingHome(_ text: String) -> String {
-        guard home.count > 1 else { return text }
-        return text.replacingOccurrences(of: home + "/", with: "~/")
+        return text.map { TextSummary.oneLine(TitleCleaner.abbreviatingHome($0), limit: maxLength) }
     }
 }
 

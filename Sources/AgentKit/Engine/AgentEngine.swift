@@ -1,3 +1,4 @@
+import CoreServices
 import Foundation
 import OSLog
 import ShipModel
@@ -32,6 +33,13 @@ public actor AgentEngine: AgentEngineProtocol {
     let exitWatcher = ProcessExitWatcher()
     let locator: AgentCLILocator
     var fileWatcher: FileSystemWatcher?
+    /// Per-file/directory kqueue watches on what live sessions write (instant, FSEvents-free).
+    var vnodeWatcher: VnodeWatcher?
+    /// When each watched directory was last listed (only newer files count as new).
+    var directoryStamps: [String: Date] = [:]
+    /// Wanted watch targets that don't exist yet (their parent is watched instead).
+    var missingWatchTargets: Set<String> = []
+    var staticWatchPaths: [String] = []
     var trackedTranscripts: Set<String> = []
 
     var running = false
@@ -44,6 +52,9 @@ public actor AgentEngine: AgentEngineProtocol {
     var startedAt = Date()
     var ready = false
     var readyWaiters: [CheckedContinuation<Void, Never>] = []
+    /// True while `start()` runs: whatever it reads is history, not news.
+    var startingUp = false
+    var attentionGate = AttentionGate()
     public private(set) var metrics = EngineMetrics()
 
     struct SurfaceState: Sendable {
@@ -96,6 +107,8 @@ public actor AgentEngine: AgentEngineProtocol {
     public func start() async {
         guard !running else { return }
         running = true
+        startingUp = true
+        defer { startingUp = false }
         startedAt = Date()
         let exits = exitWatcher.exits
         tasks.append(Task { [weak self] in
@@ -122,6 +135,9 @@ public actor AgentEngine: AgentEngineProtocol {
         leaseTask = nil
         fileWatcher?.finish()
         fileWatcher = nil
+        vnodeWatcher?.close()
+        vnodeWatcher = nil
+        directoryStamps.removeAll()
         for id in Array(held.keys) { releaseHeld(id, decision: .passthrough) }
         await ingestor.close()
         flush()
@@ -206,15 +222,20 @@ public actor AgentEngine: AgentEngineProtocol {
         let context = attention
         var deferredSeen = false
         for signal in signals {
-            let recent = live && signal.timestamp > now.addingTimeInterval(-60)
+            // Only what is happening now may notify: not startup, not history, not old evidence.
+            let recent = live && !signal.isReplay && !startingUp && signal.timestamp > now.addingTimeInterval(-60)
             metrics.signalsApplied += 1
             guard let change = store.apply(signal, now: now, watched: { recent ? context.isWatching($0) : true }) else { continue }
-            if let old = change.renamedFrom { remapHeld(from: old, to: change.key) }
+            if let old = change.renamedFrom {
+                remapHeld(from: old, to: change.key)
+                attentionGate.rename(old, to: change.key)
+            }
             for replaced in change.replaced { releaseHeld(forSession: replaced) }
             if change.current == .ended { releaseHeld(forSession: change.key) }
             if store[change.key]?.deferred != nil { deferredSeen = true }
+            if change.stateChanged { attentionGate.note(change.key, from: change.previous, to: change.current, at: signal.timestamp) }
             if recent, !suppressAttention, change.stateChanged, let previous = change.previous {
-                emitAttention(for: change.key, from: previous)
+                emitAttention(for: change.key, from: previous, at: signal.timestamp)
             }
         }
         if deferredSeen { scheduleLeaseTick() }
@@ -237,50 +258,57 @@ public actor AgentEngine: AgentEngineProtocol {
     func leaseTick() {
         leaseTask = nil
         let context = attention
-        let changes = store.tick(now: Date()) { context.isWatching($0) }
+        let now = Date()
+        let changes = store.tick(now: now) { context.isWatching($0) }
         for change in changes {
-            if let previous = change.previous { emitAttention(for: change.key, from: previous) }
+            attentionGate.note(change.key, from: change.previous, to: change.current, at: now)
+            // A deferred state is only news if its evidence is recent.
+            guard let previous = change.previous, !startingUp, let evidence = store[change.key]?.lastStateChange,
+                evidence > now.addingTimeInterval(-60)
+            else { continue }
+            emitAttention(for: change.key, from: previous, at: evidence)
         }
         if store.records.values.contains(where: { $0.deferred != nil }) { scheduleLeaseTick() }
         if !changes.isEmpty { markDirty() }
     }
 
-    func emitAttention(for key: AgentSessionKey, from previous: AgentState) {
+    func emitAttention(for key: AgentSessionKey, from previous: AgentState, at evidence: Date = Date()) {
         guard let record = store[key] else { return }
         let session = record.session
         let kind: AttentionEvent.Kind
-        var body: String
+        let gateKind: AttentionGate.Kind
+        let body: String
         switch session.state {
         case .needsInput(let reason):
             if reason == .permission, session.pendingPermission != nil { return }
             kind = .needsInput
-            body = reason == .permission ? (record.currentActivity.map { "Permission needed: \($0)" } ?? "Permission needed") : "Needs your input"
+            gateKind = .needsInput
+            if reason == .permission, let tool = record.currentTool {
+                body = AttentionText.permission(tool: tool, summary: record.currentTarget)
+            } else {
+                body = reason == .permission ? "Permission needed" : "Waiting for your input"
+            }
         case .idle:
             switch previous {
             case .working, .needsInput: break
             default: return
             }
             kind = .finished
-            body = session.lastAssistantMessage.map { TextSummary.oneLine($0, limit: 160) } ?? "Finished"
+            gateKind = .finished
+            body = AttentionText.body(session.lastAssistantMessage, fallback: "Finished")
         case .error(let message):
             kind = .failed
-            body = message
+            gateKind = .failed
+            body = AttentionText.body(message, fallback: "Failed")
         default:
             return
         }
-        if body.isEmpty { body = session.kind.displayName }
+        guard attentionGate.admit(gateKind, for: key, now: Date()) else { return }
         let event = AttentionEvent(
-            kind: kind, session: key, surface: session.surface, title: attentionTitle(record), body: body,
+            kind: kind, session: key, surface: session.surface, title: AttentionText.title(session), body: body, date: evidence,
             shouldNotify: !attention.isWatching(session.surface)
         )
         broadcast(.attention(event))
-    }
-
-    func attentionTitle(_ record: SessionRecord) -> String {
-        let session = record.session
-        let project = session.cwd.isEmpty ? nil : (session.cwd as NSString).lastPathComponent
-        if let title = session.title { return "\(session.kind.displayName) · \(TextSummary.oneLine(title, limit: 50))" }
-        return [session.kind.displayName, project].compactMap { $0 }.joined(separator: " · ")
     }
 
     // MARK: Hooks
@@ -310,7 +338,7 @@ public actor AgentEngine: AgentEngineProtocol {
         guard let key = resolvedKey(signals, pid: pid), let record = store[key] else { return .passthrough }
         let surface = record.session.surface ?? envelope.surface
         guard shouldHold(surface: surface) else {
-            emitAttention(for: key, from: .working(tool: nil))
+            emitAttention(for: key, from: .working(tool: nil), at: envelope.sentAt)
             return .passthrough
         }
         let now = Date()
@@ -332,8 +360,8 @@ public actor AgentEngine: AgentEngineProtocol {
         broadcast(
             .attention(
                 AttentionEvent(
-                    kind: .permission(request), session: key, surface: surface, title: attentionTitle(record),
-                    body: prompt.summary.isEmpty ? prompt.tool : "\(prompt.tool): \(prompt.summary)", shouldNotify: true
+                    kind: .permission(request), session: key, surface: surface, title: AttentionText.title(record.session),
+                    body: AttentionText.permission(tool: prompt.tool, summary: prompt.summary), shouldNotify: true
                 )
             )
         )
@@ -499,7 +527,8 @@ public actor AgentEngine: AgentEngineProtocol {
 
     func rawNotification(surface: SurfaceID, title: String, body: String, session: AgentSessionKey?) {
         let event = AttentionEvent(
-            kind: .notification, session: session, surface: surface, title: title, body: body,
+            kind: .notification, session: session, surface: surface,
+            title: TitleCleaner.plainLine(title, limit: 80) ?? "Notification", body: AttentionText.body(body, fallback: ""),
             shouldNotify: !attention.isWatching(surface)
         )
         broadcast(.attention(event))
@@ -564,7 +593,17 @@ public actor AgentEngine: AgentEngineProtocol {
     /// `deferTranscripts`: load newly bound transcripts in the background (used by `start()`
     /// so the first scan isn't held up by reading history).
     func performScan(_ scope: ScanScope, deferTranscripts: Bool = false) async {
-        let result = await scanner.scan(scope: scope)
+        let result: ScanResult
+        if let provider = configuration.processProvider {
+            let roots = provider(scope)
+            let pids = Set(roots.map(\.pid))
+            result = ScanResult(
+                scope: scope, roots: roots, alive: pids.union(store.pidIndex.keys.filter { kill($0, 0) == 0 || errno == EPERM }),
+                scopePIDs: pids, processCount: roots.count, candidateCount: roots.count, argvReads: 0, duration: .zero, capturedAt: Date()
+            )
+        } else {
+            result = await scanner.scan(scope: scope)
+        }
         metrics.record(result)
         if scope == .system { lastFullScan = Date() } else { lastSurfaceScan = Date() }
         let now = Date()
@@ -577,7 +616,10 @@ public actor AgentEngine: AgentEngineProtocol {
         if scope == .system {
             housekeeping(now: now)
             await evictIdleTranscripts()
+            // Dated directories (Codex's YYYY/MM/DD) move at midnight.
+            if vnodeWatcher != nil { staticWatchPaths = await ingestor.staticWatchPaths() }
         }
+        refreshWatches()
         var paths: [String] = []
         for root in result.roots {
             if let key = store.key(forPID: root.pid), let path = store[key]?.session.transcriptPath { paths.append(path) }
@@ -619,6 +661,13 @@ public actor AgentEngine: AgentEngineProtocol {
         }
         apply(signals)
         applyRootFacts(root)
+    }
+
+    /// Test seam: what a scan would do on finding this root process.
+    func applyRootForTesting(kind: AgentKind, pid: Int32, surface: SurfaceID?, cwd: String) {
+        let snapshot = ProcessSnapshot(pid: pid, ppid: 1, comm: kind.rawValue)
+        let process = ObservedProcess(snapshot: snapshot, arguments: ProcessArguments(executablePath: "/x/\(kind.rawValue)", arguments: [kind.rawValue]), cwd: cwd)
+        applyRoot(RootProcess(kind: kind, process: process, surface: surface), now: Date())
     }
 
     /// Host app, git and exit watching for a known root.
@@ -692,13 +741,24 @@ public actor AgentEngine: AgentEngineProtocol {
             tasks.append(Task { [weak self] in
                 for await batch in changes { await self?.ingest(batch) }
             })
-        } else {
-            // FSEvents can be unavailable (sandboxed hosts, missing roots): stat what's tracked.
-            engineLog.error("FSEvents watcher could not start; polling transcripts every \(self.configuration.transcriptPollInterval, privacy: .public)s")
+        }
+        if configuration.vnodeWatching {
+            let watcher = VnodeWatcher()
+            vnodeWatcher = watcher
+            let changes = watcher.changes
+            tasks.append(Task { [weak self] in
+                for await batch in changes { await self?.ingestWatched(batch) }
+            })
+            staticWatchPaths = await ingestor.staticWatchPaths()
+        }
+        if fileWatcher == nil {
+            // FSEvents can be unavailable (it is on macOS 27 for ad-hoc signed apps): kqueue
+            // watches live transcripts; a stat poll is the safety net (slower while kqueue works).
             transcriptPolling = true
-            let interval = configuration.transcriptPollInterval
+            engineLog.error("FSEvents watcher could not start; kqueue \(self.vnodeWatcher?.isHealthy == true ? "active" : "unavailable", privacy: .public), polling as a safety net")
             tasks.append(Task { [weak self] in
                 while !Task.isCancelled {
+                    let interval = await self?.pollInterval ?? 5
                     try? await Task.sleep(for: .seconds(interval))
                     await self?.pollTranscripts()
                 }
@@ -706,6 +766,89 @@ public actor AgentEngine: AgentEngineProtocol {
         }
         apply(await ingestor.pollOpenCode(), live: false)
         for path in await ingestor.eagerFiles() { await trackTranscript(path) }
+        refreshWatches()
+    }
+
+    /// 1 s without kqueue, `safetyPollInterval` (5 s) while kqueue watches are healthy.
+    var pollInterval: TimeInterval {
+        vnodeWatcher?.isHealthy == true ? configuration.safetyPollInterval : configuration.transcriptPollInterval
+    }
+
+    /// Keep kqueue watches on exactly what matters now: live sessions' transcripts and their
+    /// directories (new files after `/clear`), per-session state files, and static paths.
+    func refreshWatches() {
+        guard let watcher = vnodeWatcher else { return }
+        var desired = Set(staticWatchPaths)
+        for record in store.records.values where record.session.state.isLive {
+            if let path = record.session.transcriptPath {
+                desired.insert(path)
+                desired.insert((path as NSString).deletingLastPathComponent)
+            }
+            if let adapter = adaptersByKind[record.key.kind] {
+                desired.formUnion(adapter.statePaths(for: record.session, home: configuration.homeDirectory))
+            }
+        }
+        // A path that doesn't exist yet is covered by its nearest existing parent (at most two
+        // levels up, never the home directory itself) so its creation is noticed.
+        let home = configuration.homeDirectory.standardizedFileURL.path
+        var resolved = Set<String>()
+        var appeared: [String] = []
+        for path in desired {
+            if FileManager.default.fileExists(atPath: path) {
+                resolved.insert(path)
+                if missingWatchTargets.remove(path) != nil { appeared.append(path) }
+                continue
+            }
+            missingWatchTargets.insert(path)
+            var parent = (path as NSString).deletingLastPathComponent
+            for _ in 0..<2 where parent != home && parent.hasPrefix(home + "/") {
+                if FileManager.default.fileExists(atPath: parent) {
+                    resolved.insert(parent)
+                    break
+                }
+                parent = (parent as NSString).deletingLastPathComponent
+            }
+        }
+        let current = watcher.watchedPaths
+        for path in current.subtracting(resolved) {
+            watcher.unwatch(path)
+            directoryStamps[path] = nil
+        }
+        let now = Date()
+        for path in resolved.subtracting(current) where watcher.watch(path) {
+            var isDirectory: ObjCBool = false
+            if FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue, directoryStamps[path] == nil {
+                directoryStamps[path] = now
+            }
+        }
+        metrics.watchedPaths = watcher.watchedPaths.count
+        // Directories that appeared after start may already hold new files: list them now.
+        let newDirectories = appeared.filter { path in
+            var isDirectory: ObjCBool = false
+            return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
+        }
+        if !newDirectories.isEmpty {
+            for path in newDirectories { directoryStamps[path] = startedAt }
+            let changes = newDirectories.map { FileChange(path: $0, flags: UInt32(kFSEventStreamEventFlagItemIsDir)) }
+            tasks.append(Task { [weak self] in await self?.ingestWatched(changes) })
+        }
+    }
+
+    /// kqueue events: file writes are tailed; directory writes are listed for new/changed files.
+    func ingestWatched(_ batch: [FileChange]) async {
+        guard running else { return }
+        metrics.watchBatches += 1
+        let now = Date()
+        var changes = batch.filter { !$0.isDirectory }
+        for change in batch where change.isDirectory {
+            let since = (directoryStamps[change.path] ?? now).addingTimeInterval(-2)
+            directoryStamps[change.path] = now
+            changes += await ingestor.changedFiles(inDirectory: change.path, since: since)
+        }
+        let signals = await ingestor.handle(changes)
+        apply(signals)
+        await trackTranscripts(in: signals)
+        refreshWatches()
     }
 
     func pollTranscripts() async {
@@ -714,6 +857,7 @@ public actor AgentEngine: AgentEngineProtocol {
         if !signals.isEmpty { metrics.transcriptBatches += 1 }
         apply(signals)
         await trackTranscripts(in: signals)
+        refreshWatches()
     }
 
     /// True when FSEvents couldn't start and transcripts are polled instead.
@@ -734,6 +878,7 @@ public actor AgentEngine: AgentEngineProtocol {
     func trackTranscript(_ path: String) async {
         guard configuration.transcriptWatching, trackedTranscripts.insert(path).inserted else { return }
         apply(await ingestor.track(path: path), live: false)
+        refreshWatches()
     }
 
     // MARK: Integrations

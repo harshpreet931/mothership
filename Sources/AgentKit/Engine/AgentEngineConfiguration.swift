@@ -31,8 +31,12 @@ public struct AgentEngineConfiguration: Sendable {
     /// Sessions with no process (transcript-only) end after this much inactivity.
     public var transcriptOnlyIdleTimeout: TimeInterval
     public var integrationCheckInterval: TimeInterval
-    /// Transcript polling period, used only when FSEvents is unavailable.
+    /// Transcript polling period when neither FSEvents nor kqueue watches are available.
     public var transcriptPollInterval: TimeInterval
+    /// Polling period while kqueue watches are healthy (a safety net for missed events).
+    public var safetyPollInterval: TimeInterval
+    /// Watch live sessions' transcripts and state files with kqueue (`EVFILT_VNODE`).
+    public var vnodeWatching: Bool
     public var processScanning: Bool
     public var transcriptWatching: Bool
     /// The app's pid; its descendants are scanned at `surfaceScanInterval`.
@@ -40,6 +44,8 @@ public struct AgentEngineConfiguration: Sendable {
     public var summarizer: any SessionSummarizer
     /// Allow running `<cli> --version` when the version can't be read from the install layout.
     public var probeCLIVersions: Bool
+    /// Replaces the process scanner (tests and tools): the agent roots a scan would find.
+    public var processProvider: (@Sendable (ScanScope) -> [RootProcess])?
 
     public init(
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
@@ -57,6 +63,8 @@ public struct AgentEngineConfiguration: Sendable {
         transcriptOnlyIdleTimeout: TimeInterval = 30 * 60,
         integrationCheckInterval: TimeInterval = 30,
         transcriptPollInterval: TimeInterval = 1,
+        safetyPollInterval: TimeInterval = 5,
+        vnodeWatching: Bool = true,
         processScanning: Bool = true,
         transcriptWatching: Bool = true,
         appProcessID: Int32 = getpid(),
@@ -78,6 +86,8 @@ public struct AgentEngineConfiguration: Sendable {
         self.transcriptOnlyIdleTimeout = transcriptOnlyIdleTimeout
         self.integrationCheckInterval = integrationCheckInterval
         self.transcriptPollInterval = transcriptPollInterval
+        self.safetyPollInterval = safetyPollInterval
+        self.vnodeWatching = vnodeWatching
         self.processScanning = processScanning
         self.transcriptWatching = transcriptWatching
         self.appProcessID = appProcessID
@@ -116,6 +126,8 @@ public struct EngineMetrics: Sendable, Equatable {
     public var updatesPublished = 0
     /// How long the first scan's full transcript history took to load in the background.
     public var initialHistoryLoad: Duration?
+    public var watchBatches = 0
+    public var watchedPaths = 0
 
     public var scans: Int { systemScans + surfaceScans }
 

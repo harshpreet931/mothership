@@ -152,14 +152,21 @@ public struct AgentSignal: Sendable, Codable, Equatable {
     public var timestamp: Date
     /// Guesses need two agreeing samples before they change state.
     public var isHeuristic: Bool
+    /// Read from history (first sight of a file, startup), not observed as it happened: it
+    /// updates state but never raises attention or `unread`.
+    public var isReplay: Bool
 
-    public init(tier: SignalTier, source: String, hint: SessionHint, event: SignalEvent, timestamp: Date = Date(), isHeuristic: Bool = false) {
+    public init(
+        tier: SignalTier, source: String, hint: SessionHint, event: SignalEvent, timestamp: Date = Date(), isHeuristic: Bool = false,
+        isReplay: Bool = false
+    ) {
         self.tier = tier
         self.source = source
         self.hint = hint
         self.event = event
         self.timestamp = timestamp
         self.isHeuristic = isHeuristic
+        self.isReplay = isReplay
     }
 
     public var kind: AgentKind { hint.kind }

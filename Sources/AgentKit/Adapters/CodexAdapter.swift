@@ -92,12 +92,21 @@ public struct CodexAdapter: AgentAdapter {
 
     static func sessionIndex(_ home: URL) -> URL { home.appending(path: ".codex/session_index.jsonl") }
 
+    /// `~/.codex/sessions/YYYY/MM/DD` for a date (where new rollouts appear).
+    static func dayDirectory(_ home: URL, _ date: Date) -> URL {
+        let parts = Calendar(identifier: .gregorian).dateComponents([.year, .month, .day], from: date)
+        return sessionsRoot(home).appending(path: String(format: "%04d/%02d/%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0))
+    }
+
     public func transcriptSources(home: URL) -> [TranscriptSource] {
         let root = Self.sessionsRoot(home).path
         let index = Self.sessionIndex(home)
         let indexPath = index.path
         return [
-            TranscriptSource(format: .jsonl, root: Self.sessionsRoot(home), lineMarkers: Self.lineMarkers) { path in
+            TranscriptSource(
+                format: .jsonl, root: Self.sessionsRoot(home), lineMarkers: Self.lineMarkers,
+                watchDirectories: { date in [Self.dayDirectory(home, date)] }
+            ) { path in
                 guard path.hasPrefix(root + "/"), path.hasSuffix(".jsonl") else { return false }
                 return (path as NSString).lastPathComponent.hasPrefix("rollout-")
             },
