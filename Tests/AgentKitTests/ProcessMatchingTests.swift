@@ -49,6 +49,16 @@ struct ProcessMatchingTests {
         #expect(fake.roots() == [.claude: [12]])
     }
 
+    /// The engine's own CLI version probe (a child of the app) once showed up as an ended session.
+    @Test func versionAndHelpQueriesAreNotSessions() {
+        var fake = Fake()
+        fake.add(30, parent: 1, comm: "Mothership", exe: "/Applications/Mothership.app/Contents/MacOS/Mothership", ["Mothership"])
+        fake.add(31, parent: 30, comm: "opencode", exe: "/Users/u/.opencode/bin/opencode", ["opencode", "--version"])
+        fake.add(32, parent: 30, comm: "claude", exe: Self.claudeExe, ["claude", "--help"])
+        fake.add(33, parent: 30, comm: "opencode", exe: "/Users/u/.opencode/bin/opencode", ["opencode"])
+        #expect(fake.roots() == [.opencode: [33]])
+    }
+
     @Test func codexWrapperIsTheRoot() {
         var fake = Fake()
         fake.add(20, parent: 1, comm: "zsh", exe: "/bin/zsh", ["zsh"])

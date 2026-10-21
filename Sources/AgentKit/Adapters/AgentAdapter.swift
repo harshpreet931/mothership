@@ -16,6 +16,15 @@ public struct ObservedProcess: Sendable {
     }
 
     public var pid: Int32 { snapshot.pid }
+
+    /// `claude --version`, `opencode help`…: a one-shot query (often the engine's own CLI
+    /// version probe), never a session.
+    public var isOneShotQuery: Bool {
+        let rest = arguments.arguments.dropFirst()
+        return !rest.isEmpty && rest.allSatisfy(Self.queryArguments.contains)
+    }
+
+    private static let queryArguments: Set<String> = ["--version", "-v", "-V", "version", "--help", "-h", "help"]
 }
 
 /// What an adapter learned about which agent session a live process is running.

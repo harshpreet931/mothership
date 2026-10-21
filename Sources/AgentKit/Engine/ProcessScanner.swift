@@ -114,7 +114,7 @@ actor ProcessScanner {
                 continue
             }
             let observed = ObservedProcess(snapshot: snapshot, arguments: arguments)
-            let index = interested.first { adapters[$0].matchesRoot(observed) }
+            let index = observed.isOneShotQuery ? nil : interested.first { adapters[$0].matchesRoot(observed) }
             matchMemo[identity] = .some(index)
             if let index { matches[snapshot.pid] = (adapters[index], observed) }
         }
@@ -155,7 +155,7 @@ actor ProcessScanner {
             let interested = adapters.filter { $0.isCandidate(comm: snapshot.comm) }
             guard !interested.isEmpty, let argv = arguments(snapshot) else { continue }
             let observed = ObservedProcess(snapshot: snapshot, arguments: argv)
-            if let adapter = interested.first(where: { $0.matchesRoot(observed) }) { matched[snapshot.pid] = adapter.kind }
+            if !observed.isOneShotQuery, let adapter = interested.first(where: { $0.matchesRoot(observed) }) { matched[snapshot.pid] = adapter.kind }
         }
         return excludingDescendants(Set(matched.keys), in: table).compactMap { pid in matched[pid].map { ($0, pid) } }
     }
