@@ -6,7 +6,8 @@
 #   scripts/qa.sh --no-build   # reuse build/Mothership.app
 #   scripts/qa.sh up           # bundle + launch only, for poking at it by hand
 #   scripts/qa.sh mship ARGS…  # run mship against the instance `up` started
-#   scripts/qa.sh down         # quit that instance
+#   scripts/qa.sh down         # quit that instance and its session host
+#   scripts/qa.sh restart      # quit gracefully and relaunch (persistent panes reattach)
 #
 # Shells in the QA instance use a scratch ZDOTDIR whose .zshrc draws a fake "instant
 # prompt" immediately and then keeps loading for a second (p10k-style), so every check also
@@ -32,7 +33,7 @@ command="run"
 for arg in "$@"; do
     case "$arg" in
         --no-build) build=0 ;;
-        up|down|run|mship) command="$arg"; break ;;
+        up|down|run|mship|restart) command="$arg"; break ;;
         -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
     esac
 done
@@ -49,11 +50,62 @@ ms() { qa_env "$MSHIP" "$@"; }
 
 # Starts the app in the background with $! = the app itself (`env` execs it in place; a
 # backgrounded shell function would leave $! pointing at a subshell and orphan the app).
+# QA_KEEP=0 runs with persistent sessions off (never touching the stored preference).
 start_app() {
     env -u MOTHERSHIP_SOCKET -u MOTHERSHIP_SURFACE_ID -u MOTHERSHIP_WORKSPACE_ID \
-        MOTHERSHIP_HOME="$HOME_DIR" ZDOTDIR="$ZDOT" NO_COLOR=1 "$BIN" >>"$LOG" 2>&1 &
+        MOTHERSHIP_HOME="$HOME_DIR" ZDOTDIR="$ZDOT" NO_COLOR=1 MOTHERSHIP_KEEP_SESSIONS="${QA_KEEP:-1}" \
+        "$BIN" >>"$LOG" 2>&1 &
     echo $! > "$PIDFILE"
     disown "$!" 2>/dev/null || true
+}
+
+# A Quit Apple event to exactly this pid (JXA). The QA app shares the real app's bundle id,
+# so it must never be addressed by name or bundle id.
+quit_event() {
+    osascript -l JavaScript -e 'ObjC.import("AppKit")
+function run(argv) {
+  const app = $.NSRunningApplication.runningApplicationWithProcessIdentifier(parseInt(argv[0]));
+  return app.isNil() ? "missing" : String(app.terminate);
+}' "$1" >/dev/null 2>&1
+}
+graceful_quit_pid() {
+    quit_event "$1"
+    for _ in $(seq 1 100); do kill -0 "$1" 2>/dev/null || return 0; sleep 0.1; done
+    return 1
+}
+
+relaunch() {
+    start_app
+    APP_PID="$(cat "$PIDFILE")"
+    for _ in $(seq 1 100); do ms ping -q 2>/dev/null && return 0; sleep 0.1; done
+    return 1
+}
+
+# This run's session host: the pid its own log announced, and only if it's our build's mshipd.
+DAEMON_BIN="$APP/Contents/MacOS/mshipd"
+daemon_line() { grep -a 'listening on' "$HOME_DIR/mshipd.log" 2>/dev/null | tail -1; }
+daemon_pid() {
+    local pid; pid="$(daemon_line | sed -nE 's/.*mshipd\[([0-9]+)\].*/\1/p')"
+    [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null && [[ "$(ps -o comm= -p "$pid")" == "$DAEMON_BIN" ]] && echo "$pid"
+}
+daemon_socket() { daemon_line | sed -nE 's/.*listening on (.*) \(protocol.*/\1/p'; }
+daemon_sessions() {
+    local socket; socket="$(daemon_socket)"
+    [[ -n "$socket" ]] || return 1
+    "$DAEMON_BIN" --list --socket "$socket" 2>/dev/null
+}
+daemon_session_count() { daemon_sessions | python3 -I -c 'import json,sys; print(len(json.load(sys.stdin)["sessions"]))' 2>/dev/null || echo 0; }
+daemon_session_pid() {
+    daemon_sessions | python3 -I -c 'import json,sys
+for s in json.load(sys.stdin)["sessions"]:
+    if s["session"] == sys.argv[1]: print(s["pid"])' "$1" 2>/dev/null
+}
+stop_daemon() {
+    local pid; pid="$(daemon_pid)"
+    [[ -n "$pid" ]] || return 0
+    kill -TERM "$pid" 2>/dev/null
+    for _ in $(seq 1 50); do kill -0 "$pid" 2>/dev/null || return 0; sleep 0.1; done
+    kill -KILL "$pid" 2>/dev/null
 }
 
 prepare_dirs() {
@@ -67,6 +119,7 @@ sleep "${QA_RC_DELAY:-2}"
 PROMPT='qa> '
 RC
     : > "$ZDOT/.zshenv"
+    seq -f 'qa-line %g' 1 400 > "$WORK/long.txt"
     git -C "$WORK/repo" init -q 2>/dev/null || mkdir -p "$WORK/repo/.git"
     cat > "$WORK/page.html" <<'HTML'
 <!doctype html><title>QA Page</title>
@@ -80,6 +133,7 @@ is_running() { [[ -f "$PIDFILE" ]] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; }
 
 launch() {
     if is_running; then echo "QA instance already running (pid $(cat "$PIDFILE"))"; return 0; fi
+    stop_daemon
     prepare_dirs
     : > "$LOG"
     start_app
@@ -107,7 +161,11 @@ bundle() {
 
 case "$command" in
     up) mkdir -p "$QA_ROOT"; bundle; launch; exit $? ;;
-    down) quit; exit 0 ;;
+    down) quit; stop_daemon; exit 0 ;;
+    restart)
+        APP_PID="$(cat "$PIDFILE" 2>/dev/null)"
+        [[ -n "$APP_PID" ]] && graceful_quit_pid "$APP_PID"
+        relaunch && echo "QA instance up (pid $APP_PID)"; exit $? ;;
     mship) shift_args=(); seen=0
         for arg in "$@"; do if [[ $seen == 1 ]]; then shift_args+=("$arg"); elif [[ "$arg" == mship ]]; then seen=1; fi; done
         ms "${shift_args[@]}"; exit $? ;;
@@ -190,8 +248,9 @@ print_table() {
 
 mkdir -p "$QA_ROOT"
 quit
+stop_daemon
 bundle
-trap 'quit' EXIT
+trap 'quit; stop_daemon' EXIT
 DETAIL=""
 
 if launch >/dev/null; then pass "launch with scratch home" "pid $(cat "$PIDFILE")"; else fail "launch with scratch home" "see $LOG"; print_table; exit 1; fi
@@ -275,26 +334,118 @@ check "names: first workspace is Home" eval '[[ "$(head -1 <<<"$NAMES_NOW")" == 
 check "names: custom name kept" eval 'grep -qx "QA Custom" <<<"$NAMES_NOW"'
 check "names: all unique" eval '[[ "$(sort <<<"$NAMES_NOW" | uniq -d)" == "" ]]'
 
-# 8. Quit asks while something runs.
+last_tick() { screen "$1" 400 | sed -nE 's/^qa-tick ([0-9]+)$/\1/p' | tail -1; }
+graceful_quit() { graceful_quit_pid "$APP_PID"; }
+gone_within() { local deadline=$((SECONDS + $2)); while (( SECONDS < deadline )); do alive "$1" || return 0; sleep 0.5; done; return 1; }
+
+# 8. Persistent sessions: mshipd owns the PTYs, so panes outlive the app.
+C="$(ms new --cwd "$WORK/plain" --name "QA Counter" -- 'n=0; while :; do n=$((n+1)); echo "qa-tick $n"; sleep 0.5; done')"
+L="$(ms new --cwd "$WORK/plain" --name "QA Pager" -- "less $WORK/long.txt")"
+D="$(ms new --cwd "$WORK/plain" --name "QA Query")"
+check "persistent: a counter runs" wait_for "$C" '^qa-tick 4$' 10
+check "persistent: a full-screen TUI (less) is up" wait_for "$L" '^qa-line 1$' 10
+wait_for "$D" '^qa>' 10 >/dev/null
+# A DA query answered live (the shell reads the reply), so its bytes sit in the replay buffer.
+ms send --surface "$D" --submit "printf '\033[c'; read -rs -t 2 -d c reply; echo qa-da-answered-\${#reply}" >/dev/null
+check "persistent: terminal answers a live DA query" wait_for "$D" '^qa-da-answered-[1-9]' 6
+DAEMON="$(daemon_pid)"
+C_PID="$(daemon_session_pid "$C")"
+DETAIL="mshipd ${DAEMON:-none}, counter session pid ${C_PID:-none}"
+check "persistent: panes run under mshipd" eval '[[ -n "$DAEMON" && -n "$C_PID" && "$(ps -o ppid= -p "$C_PID" | tr -d " ")" == "$DAEMON" ]]'
+SESSIONS_BEFORE="$(daemon_session_count)"
+TICK_BEFORE="$(last_tick "$C")"
+NAMES_NOW="$(workspace_names)"
+
+check "quit with persistence on doesn't ask" graceful_quit
+DETAIL="sessions: $(daemon_session_count) of $SESSIONS_BEFORE"
+check "  sessions keep running in mshipd" eval '[[ "$(daemon_session_count)" == "$SESSIONS_BEFORE" && "$SESSIONS_BEFORE" -gt 0 ]]'
+sleep 3
+relaunch
+check "  relaunch reattaches the same surface" wait_for "$C" '^qa-tick [0-9]+$' 12
+sleep 1
+T1="$(last_tick "$C")"; sleep 1.5; T2="$(last_tick "$C")"
+DETAIL="tick before quit ${TICK_BEFORE:-?}, after relaunch ${T1:-?} then ${T2:-?}"
+check "  counter kept counting while the app was gone" eval '(( ${T1:-0} > ${TICK_BEFORE:-0} + 4 && ${T2:-0} > ${T1:-0} ))'
+check "  older lines are in scrollback" eval 'screen "$C" 3000 | grep -q "^qa-tick 1$"'
+RESTORED_NAMES="$(workspace_names)"
+check "restore keeps workspace names" eval '[[ -z "$(comm -23 <(sort <<<"$NAMES_NOW") <(sort <<<"$RESTORED_NAMES"))" ]]'
+check "  full-screen TUI redraws after reattach" eval 'wait_for "$L" "^qa-line 1$" 6 && ! screen "$L" 0 | grep -q "^qa>"'
+ms send --surface "$L" --key q >/dev/null
+check "  the TUI still takes keys (q quits less)" wait_for "$L" '^qa>' 8
+# Replaying `ESC [ c` makes the terminal answer again; that answer must not reach the shell.
+sleep 1
+ms send --surface "$D" --submit 'echo qa-after-replay' >/dev/null
+wait_for "$D" '^qa-after-replay$' 8 >/dev/null
+DETAIL="prompt line: $(screen "$D" | grep -E 'echo qa-after-replay' | head -1)"
+check "  replay injects no stray input (old DA answer)" eval 'screen "$D" | grep -qx "qa> echo qa-after-replay"'
+# The PTY has the pane's size after reattach (a full-width ruler fits on one row) and follows a split.
+ruler() { ms send --surface "$D" --submit 'c=$(tput cols); printf "%${c}s\n" "|" | tr " " "#"; echo qa-cols=$c' >/dev/null; sleep 1.5; }
+ruler_cols() {
+    local cols row
+    cols="$(screen "$D" | sed -nE 's/^qa-cols=([0-9]+)$/\1/p' | tail -1)"
+    row="$(screen "$D" | grep -E '^#+\|$' | tail -1)"
+    [[ -n "$cols" && "${#row}" == "$cols" ]] && echo "$cols"
+}
+ruler
+COLS1="$(ruler_cols)"
+DETAIL="tput cols vs ruler row: $(screen "$D" | sed -nE 's/^qa-cols=([0-9]+)$/\1/p' | tail -1) vs $(screen "$D" | grep -E '^#+\|?$' | tail -1 | wc -c | tr -d ' ')"
+check "  resize: tput cols matches the pane after reattach" test -n "$COLS1"
+ms split --surface "$D" --right >/dev/null
+sleep 2
+ruler
+COLS2="$(ruler_cols)"
+DETAIL="cols ${COLS1:-?} then ${COLS2:-?}"
+check "  resize: a split narrows the reattached PTY" eval '[[ -n "$COLS2" && "$COLS2" -lt "${COLS1:-0}" ]]'
+
+# kill -9 mid-session: the host keeps the sessions; relaunch reattaches.
+T3="$(last_tick "$C")"
+kill -KILL "$APP_PID" 2>/dev/null
+wait_exit "$APP_PID" 5
+sleep 2
+relaunch
+check "kill -9 the app: relaunch reattaches" wait_for "$C" '^qa-tick [0-9]+$' 12
+sleep 1
+T4="$(last_tick "$C")"
+DETAIL="tick before kill ${T3:-?}, after ${T4:-?}"
+check "  the counter survived the crash" eval '(( ${T4:-0} > ${T3:-0} + 3 ))'
+
+# Closing a pane ends its session; with no sessions and no client the host exits.
+L_PID="$(daemon_session_pid "$L")"
+ms close --surface "$L" >/dev/null
+sleep 1.5
+DETAIL="less session pid ${L_PID:-?}"
+check "closing a pane ends its session" eval '[[ -n "$L_PID" && -z "$(daemon_session_pid "$L")" ]] && ! alive "$L_PID"'
+for surface in $(status_json | python3 -I -c 'import json,sys; print(" ".join(s for w in json.load(sys.stdin)["workspaces"] for s in w["surfaces"]))'); do
+    ms close --surface "$surface" >/dev/null 2>&1
+done
+sleep 1
+DAEMON="$(daemon_pid)"
+graceful_quit
+DETAIL="mshipd ${DAEMON:-none}"
+check "  the host exits after its last session" eval '[[ -n "$DAEMON" ]] && gone_within "$DAEMON" 16'
+
+# 9. Persistence off: the old behavior. Quit asks, and shells die with the app.
+QA_KEEP=0 relaunch
 ms new --cwd "$WORK/plain" -- 'sleep 31338' >/dev/null
 sleep 3
-ask_to_quit "$APP_PID"
+OFF_PID="$(pgrep -f '^sleep 31338$' | head -1)"
+DETAIL="mshipd: $(daemon_pid || echo none), sleep ${OFF_PID:-none}"
+check "persistence off: panes run under the app" eval '[[ -z "$(daemon_pid)" && -n "$OFF_PID" ]]'
+quit_event "$APP_PID"
 sleep 3
 ASKED="$(grep -a 'asking before quit' "$LOG" | tail -1 | sed 's/.*asking before quit: //')"
 DETAIL="prompt: ${ASKED:-none}"
 check "quit with a running command asks first" eval 'alive "$APP_PID" && [[ "$ASKED" == *"command"* ]]'
 quit
+sleep 1
+check "  persistence off: shells die with the app" eval '[[ -n "$OFF_PID" ]] && ! alive "$OFF_PID"'
 
-# 9. Restore keeps names; quitting with only idle shells doesn't ask.
-start_app
-APP_PID="$(cat "$PIDFILE")"
-for _ in $(seq 1 100); do ms ping -q 2>/dev/null && break; sleep 0.1; done
+# Restore with persistence off; quitting with only idle shells doesn't ask.
+QA_KEEP=0 relaunch
 # Let the restored shells finish their (slow) rc files: while `sleep` in .zshrc runs it is
 # the pane's foreground job, which would rightly count as running.
 sleep 4
-RESTORED_NAMES="$(workspace_names)"
-check "restore keeps workspace names" eval '[[ -z "$(comm -23 <(sort <<<"$NAMES_NOW") <(sort <<<"$RESTORED_NAMES"))" ]]'
-ask_to_quit "$APP_PID"
+quit_event "$APP_PID"
 check "quit with idle shells doesn't ask" wait_exit "$APP_PID" 8
 rm -f "$PIDFILE"
 
