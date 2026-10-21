@@ -64,6 +64,21 @@ struct ProcessInspectorTests {
         #expect(ProcessInspector.parseProcArgs([1, 0]) == nil)
     }
 
+    @Test func childAndDescendantPIDs() throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        process.arguments = ["5"]
+        try process.run()
+        defer { process.terminate() }
+        let pid = process.processIdentifier
+        #expect(ProcessInspector.childPIDs(of: getpid()).contains(pid))
+        #expect(ProcessInspector.descendantPIDs(of: getpid()).contains(pid))
+        #expect(ProcessInspector.descendantPIDs(of: pid).isEmpty)
+        #expect(ProcessInspector.name(pid: pid) == "sleep")
+        #expect(ProcessInspector.name(pid: 999_999) == nil)
+        #expect(ProcessInspector.childPIDs(of: 999_999).isEmpty)
+    }
+
     @Test func workingDirectoryAndCPU() throws {
         let cwd = try #require(ProcessInspector.workingDirectory(pid: getpid()))
         let expected = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).resolvingSymlinksInPath().path

@@ -72,6 +72,44 @@ public enum ProcessInspector {
         return ProcessArguments(executablePath: execPath, arguments: arguments, environment: environment)
     }
 
+    /// Direct children of a process (`proc_listchildpids`), without a full process-table read.
+    public static func childPIDs(of pid: Int32) -> [Int32] {
+        var capacity = 32
+        for _ in 0..<4 {
+            var buffer = [Int32](repeating: 0, count: capacity)
+            let count = buffer.withUnsafeMutableBytes { raw in
+                proc_listchildpids(pid, raw.baseAddress, Int32(raw.count))
+            }
+            guard count >= 0 else { return [] }
+            if Int(count) < capacity { return Array(buffer.prefix(Int(count))) }
+            capacity *= 4
+        }
+        return []
+    }
+
+    /// Every descendant pid of `root`, breadth-first, via `proc_listchildpids` (a handful of
+    /// libproc calls for an app's own shells instead of a ~1000-row sysctl).
+    public static func descendantPIDs(of root: Int32, limit: Int = 4096) -> [Int32] {
+        var result: [Int32] = []
+        var queue = childPIDs(of: root)
+        var seen: Set<Int32> = [root]
+        while !queue.isEmpty, result.count < limit {
+            let pid = queue.removeFirst()
+            guard seen.insert(pid).inserted else { continue }
+            result.append(pid)
+            queue += childPIDs(of: pid)
+        }
+        return result
+    }
+
+    /// The process name (`proc_name`, the exec'd binary's name): changes on `exec`, which keeps the pid.
+    public static func name(pid: Int32) -> String? {
+        var buffer = [CChar](repeating: 0, count: 2 * Int(MAXCOMLEN) + 1)
+        let length = proc_name(pid, &buffer, UInt32(buffer.count))
+        guard length > 0 else { return nil }
+        return String(decoding: buffer.prefix(Int(length)).map { UInt8(bitPattern: $0) }, as: UTF8.self)
+    }
+
     /// `proc_pidpath`: cheaper than `arguments(pid:)` when only the binary matters.
     public static func executablePath(pid: Int32) -> String? {
         var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN) * 4)
@@ -173,7 +211,13 @@ public enum ProcessInspector {
 /// Caches `KERN_PROCARGS2` results per process identity, so argv is read once per process
 /// (failed reads are cached too: other users' processes stay unreadable).
 public final class ProcessArgumentsCache: Sendable {
-    private let storage = Mutex<[ProcessIdentity: ProcessArguments?]>([:])
+    /// pid + start time survive `exec`; the command name doesn't, so it's part of the key.
+    struct Key: Hashable {
+        var identity: ProcessIdentity
+        var comm: String
+    }
+
+    private let storage = Mutex<[Key: ProcessArguments?]>([:])
     private let reader: @Sendable (Int32) -> ProcessArguments?
 
     public init(reader: @escaping @Sendable (Int32) -> ProcessArguments? = { ProcessInspector.arguments(pid: $0) }) {
@@ -182,22 +226,22 @@ public final class ProcessArgumentsCache: Sendable {
 
     /// Cached argv, reading it on first request unless `readIfMissing` is false.
     public func arguments(for process: ProcessSnapshot, readIfMissing: Bool = true) -> ProcessArguments? {
-        let identity = process.identity
-        if let cached = storage.withLock({ $0[identity] }) { return cached }
+        let key = Key(identity: process.identity, comm: process.comm)
+        if let cached = storage.withLock({ $0[key] }) { return cached }
         guard readIfMissing else { return nil }
         let arguments = reader(process.pid)
-        storage.withLock { $0[identity] = .some(arguments) }
+        storage.withLock { $0[key] = .some(arguments) }
         return arguments
     }
 
     public func isCached(_ process: ProcessSnapshot) -> Bool {
-        storage.withLock { $0[process.identity] != nil }
+        storage.withLock { $0[Key(identity: process.identity, comm: process.comm)] != nil }
     }
 
     /// Drop entries for processes that are gone.
     public func retain(only live: Set<ProcessIdentity>) {
         storage.withLock { cache in
-            cache = cache.filter { live.contains($0.key) }
+            cache = cache.filter { live.contains($0.key.identity) }
         }
     }
 

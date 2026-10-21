@@ -50,6 +50,8 @@ public final class VnodeWatcher: Sendable {
 
     public var watchedPaths: Set<String> { state.withLock { Set($0.byPath.keys) } }
 
+    public var watchedCount: Int { state.withLock { $0.byPath.count } }
+
     /// Start watching a file or directory. Returns false if it can't be opened.
     @discardableResult
     public func watch(_ path: String) -> Bool {
