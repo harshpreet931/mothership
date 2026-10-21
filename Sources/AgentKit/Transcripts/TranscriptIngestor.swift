@@ -178,11 +178,20 @@ actor TranscriptIngestor {
         return database.sessions(updatedAfter: Date().addingTimeInterval(-7 * 24 * 3600), directory: directory, limit: 5).reversed()
     }
 
-    /// Drop tails idle for longer than `age`.
-    func evict(olderThan age: TimeInterval, now: Date = Date()) {
-        tails = tails.filter { now.timeIntervalSince($0.value.lastRead) < age }
-        documents = documents.filter { now.timeIntervalSince($0.value.modified) < age }
-        documentStates = documentStates.filter { documents[$0.key] != nil }
+    /// Drop tails idle for longer than `age` (except `keeping`); returns the evicted paths.
+    @discardableResult
+    func evict(olderThan age: TimeInterval, keeping: Set<String> = [], now: Date = Date()) -> Set<String> {
+        var evicted: Set<String> = []
+        for (path, tail) in tails where now.timeIntervalSince(tail.lastRead) >= age && !keeping.contains(path) {
+            tails[path] = nil
+            evicted.insert(path)
+        }
+        for (path, document) in documents where now.timeIntervalSince(document.modified) >= age && !keeping.contains(path) {
+            documents[path] = nil
+            documentStates[path] = nil
+            evicted.insert(path)
+        }
+        return evicted
     }
 
     func close() {

@@ -97,6 +97,8 @@ public struct TranscriptDecodeState: Sendable, Equatable {
     public var model: String?
     public var lastMessageID: String?
     public var lastMessageUsage: TokenUsage?
+    /// Running usage total for sources that report per-message usage.
+    public var usageTotal: TokenUsage = .zero
     /// True while replaying history on first sight of a file.
     public var isInitialLoad: Bool
     /// Skip the rest of this file (e.g. a subagent rollout).

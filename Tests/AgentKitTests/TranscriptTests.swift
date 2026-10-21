@@ -43,6 +43,22 @@ struct TranscriptTests {
         #expect(record.firstPrompt == "Add a dark mode toggle to settings")
     }
 
+    @Test func rereadingATranscriptDoesNotDoubleCount() throws {
+        let text = try fixture("transcripts/claude-session.jsonl")
+        var store = SessionStore()
+        let key = AgentSessionKey(kind: .claude, sessionID: "11111111-2222-3333-4444-555555555555")
+        for _ in 0..<2 {
+            var state = TranscriptDecodeState(isInitialLoad: true)
+            for line in text.split(whereSeparator: \.isNewline) {
+                for signal in ClaudeAdapter().decodeTranscript(.line(path: "/p/x.jsonl", data: Data(line.utf8)), state: &state) {
+                    store.apply(signal, now: signal.timestamp) { _ in true }
+                }
+            }
+        }
+        #expect(store[key]?.session.usage.outputTokens == 170)
+        #expect(store[key]?.session.usage.cacheReadTokens == 62000)
+    }
+
     @Test func codexRollout() throws {
         let record = try replay("codex-rollout.jsonl", adapter: CodexAdapter(), path: "/h/.codex/sessions/2026/10/21/rollout-2026-10-21T11-00-00-019ff1e8-9833-7043-aae0-fd1e33b29607.jsonl")
         let session = record.session

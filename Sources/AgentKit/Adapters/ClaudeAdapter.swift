@@ -178,7 +178,14 @@ public struct ClaudeAdapter: AgentAdapter {
                 }
                 state.lastMessageID = message["id"].text
                 state.lastMessageUsage = usage
-                if delta != .zero { signals.append(signal(.usage(delta, .add))) }
+                if delta != .zero {
+                    // Emit the file's running total (replace), so re-reading a file never double-counts.
+                    state.usageTotal.inputTokens += delta.inputTokens
+                    state.usageTotal.outputTokens += delta.outputTokens
+                    state.usageTotal.cacheReadTokens += delta.cacheReadTokens
+                    state.usageTotal.cacheWriteTokens += delta.cacheWriteTokens
+                    signals.append(signal(.usage(state.usageTotal, .replace)))
+                }
                 if !sidechain {
                     metadata.contextTokens = usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens
                     metadata.contextWindow = Pricing.contextWindow(for: state.model)

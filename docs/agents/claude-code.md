@@ -69,7 +69,8 @@ compactly (`"type":"assistant"` — the line prefilter relies on that). Records 
 ignored), `assistant` (`message.id`, `model`, `usage`, `content[].tool_use|text`,
 `stop_reason`), `system/turn_duration` (turn ended), `ai-title`, `custom-title`, `last-prompt`,
 `summary`. **One assistant message is written as several lines (one per content block) sharing
-`message.id` and usage**: usage is de-duplicated by id (delta against the previous line).
+`message.id` and usage**: usage is de-duplicated by id (delta against the previous line) and
+emitted as the file's running total, so re-reading a file never double-counts.
 Context fill = latest `input + cache_read + cache_creation`. Subagent transcripts live under
 `<session>/subagents/` and are not separate sessions. Big transcripts (150 MB seen) are read
 from the last 32 MB on first sight, so token totals for very long sessions are partial.

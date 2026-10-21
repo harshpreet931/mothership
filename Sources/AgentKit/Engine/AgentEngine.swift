@@ -570,7 +570,10 @@ public actor AgentEngine: AgentEngineProtocol {
         for (pid, key) in gone {
             apply([AgentSignal(tier: .process, source: "process:gone", hint: SessionHint(kind: key.kind, pid: pid), event: .processExited, timestamp: now)])
         }
-        if scope == .system { housekeeping(now: now) }
+        if scope == .system {
+            housekeeping(now: now)
+            await evictIdleTranscripts()
+        }
         var paths: [String] = []
         for root in result.roots {
             if let key = store.key(forPID: root.pid), let path = store[key]?.session.transcriptPath { paths.append(path) }
@@ -636,6 +639,13 @@ public actor AgentEngine: AgentEngineProtocol {
             apply([AgentSignal(tier: .process, source: "inactive", hint: hint, event: .sessionEnded(reason: "inactive"), timestamp: now)], live: false)
         }
         if !store.prune(now: now, retention: configuration.endedSessionRetention).isEmpty { markDirty() }
+    }
+
+    /// Forget tails of transcripts no live session uses, so memory stays flat over days.
+    func evictIdleTranscripts() async {
+        let live = Set(store.records.values.filter { $0.session.state.isLive }.compactMap(\.session.transcriptPath))
+        let evicted = await ingestor.evict(olderThan: 2 * 3600, keeping: live)
+        trackedTranscripts.subtract(evicted)
     }
 
     // MARK: Transcripts
