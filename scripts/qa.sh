@@ -214,6 +214,10 @@ SAVED="$(saved_cwd "$S1")"
 DETAIL="saved cwd: ${SAVED:-none}"
 check "  shell integration after exec (OSC 7 cwd)" eval '[[ "$SAVED" == "$WORK/repo/src" || "$SAVED" == "/private$WORK/repo/src" ]]'
 
+# A workspace started in the background (MCP workspace_new's default) still runs its command.
+SBG="$(ms new --background --cwd "$WORK/plain" -- 'echo qa-bg-$((2+2))')"
+check "background workspace runs its command" wait_for "$SBG" '(^|> )qa-bg-4$' 10
+
 # 2. Splits.
 S2="$(ms split --surface "$S1" --right)"
 check "split right adds a pane" eval '[[ " $(surfaces_of_workspace_with "$S1") " == *" $S2 "* ]]'

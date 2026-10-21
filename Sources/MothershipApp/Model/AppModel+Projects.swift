@@ -174,6 +174,10 @@ extension AppModel {
         NSApp.activate()
         let quit = alert.runModal() == .alertFirstButtonReturn
         NSLog("Mothership: quit %@", quit ? "confirmed" : "cancelled")
+        if !quit, !NSApp.windows.contains(where: { $0 is MainWindow && $0.isVisible }) {
+            // Closing the last window is what asked to quit; bring it back.
+            _ = NSApp.delegate?.applicationShouldHandleReopen?(NSApp, hasVisibleWindows: false)
+        }
         return quit
     }
 }
