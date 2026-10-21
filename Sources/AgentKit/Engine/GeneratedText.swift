@@ -128,6 +128,7 @@ actor GeneratedTextQueue {
     private var summaries: [AgentSessionKey: Request] = [:]
     private var draining = false
     private var cacheDirty = false
+    private var reportedUnavailable = false
     private(set) var latencies: [Duration] = []
     private(set) var calls = 0
     private(set) var failures = 0
@@ -185,6 +186,10 @@ actor GeneratedTextQueue {
                 continue
             }
             guard await generator.isAvailable() else {
+                if !reportedUnavailable {
+                    reportedUnavailable = true
+                    engineLog.notice("On-device model unavailable; sessions keep heuristic titles and summaries")
+                }
                 // Put it back and look again later; nothing is lost while the model downloads.
                 switch kind {
                 case .title: titles[request.key] = titles[request.key] ?? request
