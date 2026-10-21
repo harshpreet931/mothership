@@ -92,6 +92,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             model.persistsSky = false
             model.skyPreset = sky
         }
+        // MOTHERSHIP_SKY_TIME=HH:MM pins the sky's time of day.
+        if let time = environment["MOTHERSHIP_SKY_TIME"] { model.skyClock.pinTime(time) }
+        model.skyClock.start()
         if let path = environment["MOTHERSHIP_SNAPSHOT"], !path.isEmpty {
             DebugSnapshot.prepareView(environment["MOTHERSHIP_SNAPSHOT_VIEW"], model: model)
             let delay = environment["MOTHERSHIP_SNAPSHOT_DELAY"].flatMap(Double.init) ?? 2.4

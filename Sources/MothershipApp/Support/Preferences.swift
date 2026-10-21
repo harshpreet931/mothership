@@ -7,6 +7,10 @@ enum PreferenceKey {
     static let theme = "terminal.theme"
     /// `SkyPreset` raw value.
     static let sky = "sky.preset"
+    /// "Animate sky" (twinkling stars, drifting clouds).
+    static let skyAnimates = "sky.animates"
+    /// "Use my location" for the sun's position (off: guessed from the time zone).
+    static let skyUsesLocation = "sky.usesLocation"
     static let composerVisible = "composer.visible"
     /// Terminal cards at 88 % with a blur, letting the sky through.
     static let tintWithSky = "terminal.tintWithSky"
@@ -24,6 +28,8 @@ enum PreferenceKey {
         static let dockBadge = "notifications.dockBadge"
         /// Also alert when the pane is visible but the app isn't frontmost.
         static let whenVisible = "notifications.whenVisible"
+        /// Toasts and banners for agents running outside Mothership (off by default).
+        static let externalAgents = "notifications.externalAgents"
     }
 
     static func registerDefaults() {
@@ -37,6 +43,7 @@ enum PreferenceKey {
             Notifications.sound: true,
             Notifications.dockBadge: true,
             Notifications.whenVisible: false,
+            Notifications.externalAgents: false,
         ])
     }
 }

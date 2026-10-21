@@ -108,6 +108,10 @@ cat > "$CONTENTS/Info.plist" <<PLIST
     <true/>
     <key>NSHumanReadableCopyright</key>
     <string>MIT License</string>
+    <key>NSLocationUsageDescription</key>
+    <string>Mothership uses your approximate location only to place the sun in its sky. Nothing is saved or sent anywhere.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Mothership uses your approximate location only to place the sun in its sky. Nothing is saved or sent anywhere.</string>
 </dict>
 </plist>
 PLIST

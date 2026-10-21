@@ -10,7 +10,7 @@ final class RootView: NSView {
     let model: AppModel
     let router: CommandRouter
     let canvas: WorkspaceCanvas
-    private let skyHost: NSHostingView<SkyLayer>
+    let skyView = LivingSkyView(frame: .zero)
     private let desktopBlur = NSVisualEffectView()
     private let screenHost: NSHostingView<ScreenLayer>
     private let sidebarHost: NSHostingView<SidebarView>
@@ -35,7 +35,6 @@ final class RootView: NSView {
         self.model = model
         self.router = router
         canvas = WorkspaceCanvas(model: model)
-        skyHost = Self.host(SkyLayer(model: model))
         screenHost = Self.host(ScreenLayer(model: model))
         sidebarHost = Self.host(SidebarView(model: model))
         composerHost = Self.host(ComposerView(model: model))
@@ -48,7 +47,7 @@ final class RootView: NSView {
         desktopBlur.blendingMode = .behindWindow
         desktopBlur.state = .active
         desktopBlur.isHidden = true
-        for view in [desktopBlur, skyHost, canvas, screenHost, sidebarHost, composerHost, topBarHost, toastHost] as [NSView] {
+        for view in [desktopBlur, skyView, canvas, screenHost, sidebarHost, composerHost, topBarHost, toastHost] as [NSView] {
             addSubview(view)
         }
         observation = ObservationLoop { [weak self] in self?.sync() }
@@ -115,7 +114,7 @@ final class RootView: NSView {
     }
 
     private func apply(_ frames: Frames, animated: Bool) {
-        skyHost.frame = bounds
+        skyView.frame = bounds
         desktopBlur.frame = bounds
         topBarHost.frame = NSRect(x: 0, y: 0, width: bounds.width, height: Sky.topBarHeight)
         layoutToasts()
@@ -160,9 +159,11 @@ final class RootView: NSView {
         toastHost.isHidden = model.toasts.isEmpty || screen == .settings
         _ = model.toasts.count
 
-        let sky = model.resolvedSky
-        desktopBlur.isHidden = sky != .desktop
-        onSkyChange?(model.chromeIsDark, sky == .desktop)
+        let sky = model.skyState
+        skyView.apply(sky, animated: true)
+        skyView.animationEnabled = model.skyClock.animates
+        desktopBlur.isHidden = sky.kind != .desktop
+        onSkyChange?(sky.isDark, sky.kind == .desktop)
 
         if screen != lastScreen {
             // Keys must not reach a terminal that isn't on screen.
@@ -261,15 +262,6 @@ final class RootView: NSView {
 }
 
 // MARK: SwiftUI layers
-
-/// The sky, re-rendered when the preset changes.
-struct SkyLayer: View {
-    let model: AppModel
-    var body: some View {
-        SkyBackdrop(preset: model.resolvedSky)
-            .animation(.easeInOut(duration: 0.6), value: model.resolvedSky)
-    }
-}
 
 /// Home, Fleet, Settings, or the empty state.
 struct ScreenLayer: View {

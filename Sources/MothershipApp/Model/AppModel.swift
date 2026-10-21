@@ -65,8 +65,10 @@ final class AppModel {
     }
     /// Off when a debug override (MOTHERSHIP_SKY) picks the sky.
     @ObservationIgnored var persistsSky = true
-    /// The system's appearance, which `auto` follows.
+    /// The system's appearance, which the Desktop sky follows.
     var systemIsDark = true
+    /// The sun's position for the sky, plus "Animate sky" and "Use my location".
+    @ObservationIgnored let skyClock = SkyClock()
     var isComposerVisible = UserDefaults.standard.object(forKey: PreferenceKey.composerVisible) as? Bool ?? true {
         didSet { UserDefaults.standard.set(isComposerVisible, forKey: PreferenceKey.composerVisible) }
     }

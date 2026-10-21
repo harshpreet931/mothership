@@ -69,9 +69,11 @@ func withAnimationIfAllowed(_ body: () -> Void) {
 extension AppModel {
     // MARK: Sky / appearance
 
-    /// The concrete sky now showing.
-    var resolvedSky: SkyPreset { skyPreset.resolved(systemDark: systemIsDark) }
-    var chromeIsDark: Bool { skyPreset.chromeIsDark(systemDark: systemIsDark) }
+    /// The sky now showing: the preset at the sun's current position.
+    var skyState: SkyState { skyPreset.state(sun: skyClock.sun, systemDark: systemIsDark) }
+    /// Dark chrome when the sky itself is dark (by luminance), so Night, twilight and
+    /// Dusk get frosted-white selection and Day gets ink.
+    var chromeIsDark: Bool { skyState.isDark }
 
     func show(_ screen: AppScreen) {
         guard self.screen != screen else { return }

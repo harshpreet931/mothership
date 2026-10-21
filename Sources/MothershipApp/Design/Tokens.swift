@@ -51,6 +51,13 @@ enum Sky {
     static let hairline = Color(nsColor: .skyInk.withAlphaComponent(0.08))
     /// Recessed chip behind inline code.
     static let recess = Color(nsColor: .skyRecess)
+    /// Selection (sidebar row, segmented pill, palette row, active circle): solid ink by
+    /// Day; at night a frosted white 16 % with a 20 % white hairline and white text.
+    static let selection = Color(nsColor: .skySelection)
+    static let selectionStroke = Color(nsColor: .skySelectionStroke)
+    static let onSelection = Color(nsColor: .skyOnSelection)
+    /// Switches: ink track by Day, a calm blue at night (white on white reads as off).
+    static let accentToggle = Color(nsColor: .skyAccentToggle)
 
     // MARK: Motion
 
@@ -82,6 +89,10 @@ extension NSColor {
     static let skyAttentionSoft = dynamic(light: rgb(0xFF7A1A, 0.14), dark: rgb(0xFF8A33, 0.18))
     static let skyDanger = dynamic(light: rgb(0xE5484D), dark: rgb(0xF2555A))
     static let skyRecess = dynamic(light: rgb(0x0D0E11, 0.05), dark: rgb(0x000000, 0.28))
+    static let skySelection = dynamic(light: rgb(0x0D0E11), dark: rgb(0xFFFFFF, 0.16))
+    static let skySelectionStroke = dynamic(light: rgb(0x0D0E11, 0), dark: rgb(0xFFFFFF, 0.2))
+    static let skyOnSelection = NSColor.white
+    static let skyAccentToggle = dynamic(light: rgb(0x0D0E11), dark: rgb(0x5B7CF0))
     /// Solid stand-in for glass under Reduce Transparency.
     static let skySolidPanel = dynamic(light: rgb(0xF4F6F9), dark: rgb(0x1D1F25))
 

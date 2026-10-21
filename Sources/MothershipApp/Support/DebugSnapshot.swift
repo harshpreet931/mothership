@@ -25,7 +25,6 @@ final class SnapshotMode {
 enum DebugSnapshot {
     /// `MOTHERSHIP_SNAPSHOT_VIEW`: home | fleet | palette | settings[:agents|appearance|notifications|keys].
     static func prepareView(_ view: String?, model: AppModel) {
-        SkyMotion.shared.forcePaused = true
         guard let view, !view.isEmpty else { return }
         let parts = view.split(separator: ":").map(String.init)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
@@ -57,6 +56,18 @@ enum DebugSnapshot {
             guard let window else { return }
             NSLog("Mothership: snapshot %@", capture(window, to: URL(fileURLWithPath: path)) ? path : "failed")
             SnapshotMode.shared.active = false
+            let sky = window.model.skyState
+            NSLog("Mothership: sky %@ altitude %.1f° luminance %.3f dark %@ paused %@", sky.phaseName, sky.sun.altitude, sky.palette.luminance,
+                  sky.isDark ? "yes" : "no", (window.window?.contentView as? RootView)?.skyView.isPaused == true ? "yes" : "no")
+            // MOTHERSHIP_SNAPSHOT_SKY_PAIR=1: the sky alone, twice, 1.5 s apart (proves it moves).
+            if ProcessInfo.processInfo.environment["MOTHERSHIP_SNAPSHOT_SKY_PAIR"] != nil {
+                let base = (path as NSString).deletingPathExtension
+                _ = captureSky(window, to: URL(fileURLWithPath: base + "-sky-a.png"))
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak window] in
+                    guard let window else { return }
+                    NSLog("Mothership: sky pair %@", captureSky(window, to: URL(fileURLWithPath: base + "-sky-b.png")) ? base : "failed")
+                }
+            }
             logGeometry(window)
             let ports = window.model.ports.map { "\($0.port) \($0.process) ws=\(window.model.workspaceName(for: $0) ?? "-")" }
             NSLog("Mothership: ports %@", ports.joined(separator: ", "))
@@ -90,7 +101,7 @@ enum DebugSnapshot {
         NSGraphicsContext.current = context
         root.effectiveAppearance.performAsCurrentDrawingAppearance {
             // 1. Sky.
-            drawSky(model: model, size: bounds.size, dark: root.effectiveAppearance.isDark)
+            drawSky(root.skyView, model: model, size: bounds.size, dark: root.effectiveAppearance.isDark, context: context.cgContext)
 
             // 2. Canvas: halos, cards, the terminals' own frames, dim, ring, in-card chrome.
             if !root.canvas.isHidden, let workspace = model.selectedWorkspace, let view = root.canvas.selectedWorkspaceView {
@@ -164,17 +175,33 @@ enum DebugSnapshot {
         }
     }
 
-    private static func drawSky(model: AppModel, size: NSSize, dark: Bool) {
-        let preset = model.resolvedSky
-        guard preset != .desktop else {
+    /// The sky's layers as they are this instant (twinkles mid-flight included).
+    private static func drawSky(_ sky: LivingSkyView, model: AppModel, size: NSSize, dark: Bool, context: CGContext) {
+        guard model.skyState.kind != .desktop else {
             NSColor(white: dark ? 0.16 : 0.82, alpha: 1).setFill()
             NSRect(origin: .zero, size: size).fill()
             return
         }
-        let renderer = ImageRenderer(content: SkyBackdrop(preset: preset, frozenTime: 0).frame(width: size.width, height: size.height))
-        renderer.scale = 2
-        guard let image = renderer.cgImage else { return }
-        NSImage(cgImage: image, size: size).draw(in: NSRect(origin: .zero, size: size))
+        context.saveGState()
+        sky.renderCurrentFrame(in: context)
+        context.restoreGState()
+    }
+
+    /// Just the sky, for comparing frames (`MOTHERSHIP_SNAPSHOT_SKY_PAIR`).
+    static func captureSky(_ controller: MainWindowController, to url: URL) -> Bool {
+        guard let window = controller.window, let root = window.contentView as? RootView else { return false }
+        let size = root.bounds.size
+        let scale = window.backingScaleFactor
+        guard let context = CGContext(
+            data: nil, width: Int(size.width * scale), height: Int(size.height * scale), bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return false }
+        context.scaleBy(x: scale, y: scale)
+        root.skyView.renderCurrentFrame(in: context)
+        guard let image = context.makeImage() else { return false }
+        let rep = NSBitmapImageRep(cgImage: image)
+        guard let png = rep.representation(using: .png, properties: [:]) else { return false }
+        return (try? png.write(to: url)) != nil
     }
 
     /// `cacheDisplay` of `view` (its `rect`), drawn at `target` (bitmap coordinates).
