@@ -12,7 +12,7 @@ public enum ControlSocketLocation {
             return socket.hasPrefix("/") ? socket : ShipPaths.socket.path
         }
         if let home = environment("MOTHERSHIP_HOME") {
-            return home.hasPrefix("/") ? join(home, "control.sock") : ShipPaths.socket.path
+            return home.hasPrefix("/") ? ShipPaths.socketPath(forSupportDirectory: home) : ShipPaths.socket.path
         }
         if let home = environment("HOME"), home.hasPrefix("/") {
             return join(home, "Library/Application Support/Mothership/control.sock")

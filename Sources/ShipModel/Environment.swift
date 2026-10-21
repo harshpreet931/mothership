@@ -44,7 +44,25 @@ public enum ShipPaths {
 
     /// The socket the app itself listens on. Ignores an inherited `MOTHERSHIP_SOCKET`, so a
     /// Mothership launched from a Mothership shell doesn't try to take over its parent's socket.
-    public static var appSocket: URL { supportDirectory.appending(path: "control.sock") }
+    public static var appSocket: URL { URL(fileURLWithPath: socketPath(forSupportDirectory: supportDirectory.path)) }
+
+    /// `<support>/control.sock`, or a per-user temp path when that would overflow
+    /// `sockaddr_un.sun_path` (104 bytes on Darwin), as with long scratch `MOTHERSHIP_HOME`s.
+    /// The temp name is derived from the support directory, so the app and CLI agree on it.
+    public static func socketPath(forSupportDirectory directory: String) -> String {
+        var directory = directory
+        while directory.count > 1, directory.hasSuffix("/") { directory.removeLast() }
+        let preferred = directory + "/control.sock"
+        if preferred.utf8.count < 100 { return preferred }
+        // FNV-1a: stable across launches, unlike Hasher.
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in directory.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 0x0000_0100_0000_01b3
+        }
+        let temp = URL(fileURLWithPath: NSTemporaryDirectory()).path
+        return temp + "/mship-" + String(hash, radix: 16) + ".sock"
+    }
 
     /// A stable copy of the `mship` CLI that agent hook configs point at, so moving or
     /// updating the app never breaks installed hooks.

@@ -28,3 +28,14 @@ import ShipProtocol
     let data = try JSONEncoder.ship.encode(states)
     #expect(try JSONDecoder.ship.decode([AgentState].self, from: data) == states)
 }
+
+@Test func longSupportDirectoriesFallBackToAShortSocketPath() {
+    let short = ShipPaths.socketPath(forSupportDirectory: "/Users/u/Library/Application Support/Mothership/")
+    #expect(short == "/Users/u/Library/Application Support/Mothership/control.sock")
+    let deep = "/private/tmp/" + String(repeating: "scratch-", count: 12) + "home"
+    let fallback = ShipPaths.socketPath(forSupportDirectory: deep)
+    #expect(fallback.utf8.count < 104)
+    #expect(fallback.hasSuffix(".sock"))
+    #expect(fallback == ShipPaths.socketPath(forSupportDirectory: deep))
+    #expect(fallback != ShipPaths.socketPath(forSupportDirectory: deep + "2"))
+}
