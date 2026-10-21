@@ -36,8 +36,8 @@ public struct RootProcess: Sendable {
 public enum ScanScope: Sendable, Equatable {
     /// Every process of the current user.
     case system
-    /// Only descendants of this pid (the app's own shells).
-    case descendants(of: Int32)
+    /// Only descendants of these pids: the app's own shells, and panes hosted by `mshipd`.
+    case descendants(of: [Int32])
 }
 
 public struct ScanResult: Sendable {
@@ -117,8 +117,9 @@ actor ProcessScanner {
         switch scope {
         case .system:
             pool = table.processes.values.filter { $0.uid == uid && !$0.isZombie && $0.pid != ownPID }
-        case .descendants(let pid):
-            pool = table.descendants(of: pid).filter { !$0.isZombie }
+        case .descendants(let roots):
+            var seen = Set<Int32>()
+            pool = roots.flatMap { table.descendants(of: $0) }.filter { !$0.isZombie && seen.insert($0.pid).inserted }
         }
         var candidateCount = 0
         var matches: [Int32: (adapter: any AgentAdapter, process: ObservedProcess)] = [:]
@@ -281,9 +282,13 @@ actor ProcessScanner {
     /// Whether the app's process tree changed since the last check: a few libproc calls, so
     /// the per-second surface scan only reads the process table when something forked, exec'd
     /// (same pid, new name) or exited.
-    func descendantsChanged(of pid: Int32) -> Bool {
+    func descendantsChanged(of roots: [Int32]) -> Bool {
         var current: [Int32: String] = [:]
-        for child in ProcessInspector.descendantPIDs(of: pid) { current[child] = ProcessInspector.name(pid: child) ?? "" }
+        for root in roots {
+            for child in ProcessInspector.descendantPIDs(of: root) where current[child] == nil {
+                current[child] = ProcessInspector.name(pid: child) ?? ""
+            }
+        }
         defer { lastDescendants = current }
         return current != lastDescendants
     }

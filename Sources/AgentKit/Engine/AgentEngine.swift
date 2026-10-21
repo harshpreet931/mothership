@@ -56,6 +56,8 @@ public actor AgentEngine: AgentEngineProtocol {
     var startingUp = false
     /// Frontmost app: scan and poll at full speed; hidden: back off.
     var appActive = true
+    /// Pane hosts besides the app (`setPaneHostPIDs`).
+    var paneHostPIDs: [Int32] = []
     /// The last `.sessions` snapshot sent, so identical ones aren't re-sent.
     var lastPublished: [AgentSession]?
     /// Summaries are regex work over long replies; recompute only when their inputs change.
@@ -626,7 +628,7 @@ public actor AgentEngine: AgentEngineProtocol {
             if Date().timeIntervalSince(lastFullScan) >= systemInterval - 0.05 {
                 await performScan(.system)
             } else {
-                await performScan(.descendants(of: configuration.appProcessID))
+                await performScan(.descendants(of: paneRoots))
             }
         }
     }
@@ -638,6 +640,20 @@ public actor AgentEngine: AgentEngineProtocol {
         return (surfaces.isEmpty || !appActive ? system : configuration.surfaceScanInterval, system)
     }
 
+    /// Processes whose descendants are panes besides the app's own: the session daemon
+    /// (`mshipd`) owns pane PTYs so shells outlive the app. Pane scans and the cheap tree
+    /// check cover these trees as well as the app's.
+    public func setPaneHostPIDs(_ pids: [Int32]) {
+        var seen: Set<Int32> = [configuration.appProcessID]
+        let hosts = pids.filter { $0 > 0 && seen.insert($0).inserted }
+        guard hosts != paneHostPIDs else { return }
+        paneHostPIDs = hosts
+        requestSurfaceScan()
+    }
+
+    /// The app's pid, then the pane hosts'.
+    var paneRoots: [Int32] { [configuration.appProcessID] + paneHostPIDs }
+
     /// The app became frontmost (true) or went to the background (false). Scans and the safety
     /// poll slow down while hidden; also follows `AttentionContext.appIsActive`.
     public func setAppActive(_ active: Bool) {
@@ -647,24 +663,24 @@ public actor AgentEngine: AgentEngineProtocol {
     func requestSurfaceScan() {
         guard running, configuration.processScanning, Date().timeIntervalSince(lastSurfaceScan) > 0.25 else { return }
         lastSurfaceScan = Date()
-        let pid = configuration.appProcessID
-        tasks.append(Task { [weak self] in await self?.performScan(.descendants(of: pid), force: true) })
+        let roots = paneRoots
+        tasks.append(Task { [weak self] in await self?.performScan(.descendants(of: roots), force: true) })
         tasks.removeAll { $0.isCancelled }
     }
 
     /// Run a scan now (used by `mship-probe`).
     public func scanNow(systemWide: Bool = true) async {
-        await performScan(systemWide ? .system : .descendants(of: configuration.appProcessID))
+        await performScan(systemWide ? .system : .descendants(of: paneRoots))
     }
 
     /// `deferTranscripts`: load newly bound transcripts in the background (used by `start()`
     /// so the first scan isn't held up by reading history).
     /// `force`: scan the app's tree even if its pids and names look unchanged.
     func performScan(_ scope: ScanScope, deferTranscripts: Bool = false, force: Bool = false) async {
-        // The per-second pane scan only matters when the app's process tree changed.
+        // The per-second pane scan only matters when a pane tree (the app's, mshipd's) changed.
         // Pane agents judged by CPU (manifest adapters) still need their per-second sample.
-        if case .descendants(let pid) = scope, configuration.processProvider == nil, !force, !paneAgentsNeedCPUSamples(),
-            !(await scanner.descendantsChanged(of: pid))
+        if case .descendants(let roots) = scope, configuration.processProvider == nil, !force, !paneAgentsNeedCPUSamples(),
+            !(await scanner.descendantsChanged(of: roots))
         {
             metrics.skippedSurfaceScans += 1
             return

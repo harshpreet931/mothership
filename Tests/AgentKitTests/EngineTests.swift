@@ -1,5 +1,6 @@
 import Foundation
 import ShipModel
+import SystemProbe
 import Testing
 
 @testable import AgentKit
@@ -321,17 +322,48 @@ struct EngineTests {
 
     @Test func surfaceScanRunsOnlyWhenTheAppTreeChanges() async throws {
         let scanner = ProcessScanner(adapters: [], home: FileManager.default.temporaryDirectory)
-        _ = await scanner.descendantsChanged(of: getpid())
-        #expect(await scanner.descendantsChanged(of: getpid()) == false)
+        _ = await scanner.descendantsChanged(of: [getpid()])
+        #expect(await scanner.descendantsChanged(of: [getpid()]) == false)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sleep")
         process.arguments = ["5"]
         try process.run()
-        #expect(await scanner.descendantsChanged(of: getpid()))
-        #expect(await scanner.descendantsChanged(of: getpid()) == false)
+        #expect(await scanner.descendantsChanged(of: [getpid()]))
+        #expect(await scanner.descendantsChanged(of: [getpid()]) == false)
         process.terminate()
         process.waitUntilExit()
-        #expect(await scanner.descendantsChanged(of: getpid()))
+        #expect(await scanner.descendantsChanged(of: [getpid()]))
+    }
+
+    @Test func paneHostTreesJoinThePaneScan() async throws {
+        // A stand-in for mshipd: a host whose child is replaced after a moment.
+        let host = Process()
+        host.executableURL = URL(fileURLWithPath: "/bin/sh")
+        host.arguments = ["-c", "/bin/sleep 0.6; /bin/sleep 30"]
+        try host.run()
+        defer {
+            for child in ProcessInspector.childPIDs(of: host.processIdentifier) { kill(child, SIGKILL) }
+            host.terminate()
+        }
+        let hostPID = host.processIdentifier
+        #expect(await waitUntil { !ProcessInspector.childPIDs(of: hostPID).isEmpty })
+        let first = try #require(ProcessInspector.childPIDs(of: hostPID).first)
+        let scanner = ProcessScanner(adapters: [], home: FileManager.default.temporaryDirectory)
+        let scan = await scanner.scan(scope: .descendants(of: [999_999, hostPID]))
+        #expect(scan.scopePIDs.contains(first))
+        _ = await scanner.descendantsChanged(of: [999_999, hostPID])
+        #expect(await scanner.descendantsChanged(of: [999_999, hostPID]) == false)
+        // The host's next child is a change in a pane tree even though the app's didn't move.
+        #expect(await waitUntil { await scanner.descendantsChanged(of: [999_999, hostPID]) })
+
+        let home = try TempHome()
+        defer { home.remove() }
+        let engine = makeEngine(home: home)
+        let app = AgentEngineConfiguration.isolated(home: home.root).appProcessID
+        await engine.setPaneHostPIDs([hostPID, app, hostPID, 0])
+        #expect(await engine.paneRoots == [app, hostPID])
+        await engine.setPaneHostPIDs([])
+        #expect(await engine.paneRoots == [app])
     }
 
     @Test func terminalSignalsMapToSessionOnSurface() async throws {
