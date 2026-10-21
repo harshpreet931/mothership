@@ -99,6 +99,7 @@ enum MainMenu {
         menu.addItem(command(.fleet, router: router))
         menu.addItem(.separator())
         menu.addItem(command(.commandPalette, router: router))
+        menu.addItem(command(.commandPalette, router: router, hidden: true, key: "p", modifiers: [.command, .shift]))
         menu.addItem(command(.toggleSidebar, router: router))
         menu.addItem(command(.toggleComposer, router: router))
         menu.addItem(.separator())

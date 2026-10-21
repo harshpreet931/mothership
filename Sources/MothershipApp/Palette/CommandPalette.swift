@@ -37,7 +37,7 @@ struct PaletteItem: Identifiable {
     let icon: Icon
     var shortcut: String?
     let perform: @MainActor () -> Void
-    /// Secondary actions (⌘K on a selected row).
+    /// Secondary actions (⇥ on a selected row; ⌘K is Clear now).
     var actions: [Action] = []
 }
 
@@ -138,8 +138,8 @@ struct CommandPaletteView: View {
                         if actionsFor != nil { actionsFor = nil } else { onDismiss() }
                         return .handled
                     }
-                    .onKeyPress(keys: ["k"], phases: .down) { press in
-                        guard press.modifiers.contains(.command), results.indices.contains(selection) else { return .ignored }
+                    .onKeyPress(.tab, phases: .down) { _ in
+                        guard results.indices.contains(selection) else { return .ignored }
                         let item = results[selection]
                         actionsFor = actionsFor == item.id || item.actions.isEmpty ? nil : item.id
                         actionSelection = 0
@@ -194,7 +194,7 @@ struct CommandPaletteView: View {
             }
             HStack(spacing: 16) {
                 hint("↩", "Open")
-                hint("⌘K", "Actions")
+                hint("⇥", "Actions")
                 hint("esc", "Close")
                 Spacer()
             }
@@ -224,13 +224,17 @@ struct CommandPaletteView: View {
                         Text(action.title).font(.system(size: 13))
                         Spacer()
                         if let shortcut = action.shortcut {
-                            Text(shortcut).font(Sky.Font.meta).foregroundStyle(index == actionSelection ? Sky.onInk.opacity(0.7) : Sky.tertiary)
+                            Text(shortcut).font(Sky.Font.meta).foregroundStyle(index == actionSelection ? Sky.onSelection.opacity(0.7) : Sky.tertiary)
                         }
                     }
-                    .foregroundStyle(index == actionSelection ? Sky.onInk : Sky.ink)
+                    .foregroundStyle(index == actionSelection ? Sky.onSelection : Sky.ink)
                     .padding(.horizontal, 12)
                     .frame(height: 34)
-                    .background(Capsule().fill(index == actionSelection ? Sky.ink : .clear))
+                    .background {
+                        if index == actionSelection {
+                            Capsule().fill(Sky.selection).overlay(Capsule().strokeBorder(Sky.selectionStroke, lineWidth: 1))
+                        }
+                    }
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -343,7 +347,7 @@ private struct PaletteRow: View {
                 if let subtitle = item.subtitle {
                     Text(subtitle)
                         .font(Sky.Font.meta)
-                        .foregroundStyle(selected ? Sky.onInk.opacity(0.6) : Sky.tertiary)
+                        .foregroundStyle(selected ? Sky.onSelection.opacity(0.66) : Sky.tertiary)
                         .lineLimit(1)
                 }
             }
@@ -352,24 +356,29 @@ private struct PaletteRow: View {
                 StatusDot(color: Sky.attention)
             }
             if selected, !item.actions.isEmpty {
-                Text("⌘K").font(Sky.Font.meta).foregroundStyle(Sky.onInk.opacity(0.55))
+                Text("⇥ Actions").font(Sky.Font.meta).foregroundStyle(Sky.onSelection.opacity(0.6))
             }
             if let shortcut = item.shortcut {
                 Text(shortcut)
                     .font(Sky.Font.meta)
-                    .foregroundStyle(selected ? Sky.onInk.opacity(0.7) : Sky.tertiary)
+                    .foregroundStyle(selected ? Sky.onSelection.opacity(0.7) : Sky.tertiary)
             }
         }
         .padding(.horizontal, 12)
         .frame(height: item.subtitle == nil ? 38 : 46)
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(selected ? Sky.ink : .clear))
+        .background {
+            if selected {
+                let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+                shape.fill(Sky.selection).overlay(shape.strokeBorder(Sky.selectionStroke, lineWidth: 1))
+            }
+        }
         .contentShape(Rectangle())
     }
 
-    /// Matched characters in ink (or onInk when selected), the rest secondary.
+    /// Matched characters in ink (or white when selected), the rest secondary.
     private func highlighted(_ text: String) -> Text {
-        let strong = selected ? Sky.onInk : Sky.ink
-        let soft = selected ? Sky.onInk.opacity(0.72) : Sky.ink.opacity(0.72)
+        let strong = selected ? Sky.onSelection : Sky.ink
+        let soft = selected ? Sky.onSelection.opacity(0.72) : Sky.ink.opacity(0.72)
         guard !query.isEmpty, let match = FuzzyMatcher.match(query, in: text), !match.indices.isEmpty else {
             return Text(text).foregroundColor(strong)
         }
@@ -385,7 +394,7 @@ private struct PaletteRow: View {
     }
 
     @ViewBuilder private var icon: some View {
-        let color = selected ? Sky.onInk : Sky.ink.opacity(0.75)
+        let color = selected ? Sky.onSelection : Sky.ink.opacity(0.75)
         switch item.icon {
         case .symbol(let name):
             Image(systemName: name).font(.system(size: 13)).foregroundStyle(color)

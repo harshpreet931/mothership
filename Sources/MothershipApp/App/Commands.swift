@@ -99,12 +99,12 @@ enum AppCommand: String, CaseIterable {
         case .fleet: ("f", [.command, .shift])
         case .toggleComposer: ("l", .command)
         case .toggleSidebar: ("b", .command)
-        case .commandPalette: ("k", .command)
+        case .commandPalette: ("p", .command)
         case .settings: (",", .command)
         case .increaseFontSize: ("+", .command)
         case .decreaseFontSize: ("-", .command)
         case .resetFontSize: ("0", [.command, .control])
-        case .clearScreen: nil
+        case .clearScreen: ("k", .command)
         }
     }
 
@@ -204,7 +204,9 @@ final class CommandRouter: NSObject, NSMenuItemValidation {
         case .increaseFontSize: model.runtime.adjustFontSize(by: 1)
         case .decreaseFontSize: model.runtime.adjustFontSize(by: -1)
         case .resetFontSize: model.runtime.resetFontSize()
-        case .clearScreen: model.focusedSurface?.terminal?.performAction("clear_screen")
+        case .clearScreen:
+            guard model.screen == .workspaces, !model.isPalettePresented else { return }
+            model.focusedSurface?.terminal?.performAction("clear_screen")
         }
         if [.increaseFontSize, .decreaseFontSize, .resetFontSize].contains(command) {
             UserDefaults.standard.set(model.runtime.hasFontSizeOverride ? Double(model.runtime.fontSize) : 0, forKey: PreferenceKey.fontSize)
@@ -240,7 +242,8 @@ final class CommandRouter: NSObject, NSMenuItemValidation {
             item.title = model.isComposerVisible ? "Hide Composer" : "Show Composer"
             return true
         case .clearScreen:
-            return model.focusedSurface?.terminal != nil
+            // Only the pane you can see, and never from under the palette.
+            return model.screen == .workspaces && !model.isPalettePresented && model.focusedSurface?.terminal != nil
         default:
             return true
         }

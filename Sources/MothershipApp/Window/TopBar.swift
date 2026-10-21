@@ -57,11 +57,11 @@ struct HomeMarkButton: View {
 
     var body: some View {
         Button(action: action) {
-            MothershipMark(variant: .mono(active ? Sky.onInk : Sky.ink.opacity(0.85)), size: 22)
+            MothershipMark(variant: .mono(active ? Sky.onSelection : Sky.ink.opacity(0.85)), size: 22)
                 .frame(width: 32, height: 32)
                 .background {
                     if active {
-                        Circle().fill(Sky.ink)
+                        Circle().fill(Sky.selection).overlay(Circle().strokeBorder(Sky.selectionStroke, lineWidth: 1))
                     } else {
                         Circle().fill(Color.clear).glass(Circle())
                             .overlay(Circle().fill(Sky.ink.opacity(hovering ? 0.05 : 0)))
@@ -76,7 +76,7 @@ struct HomeMarkButton: View {
     }
 }
 
-/// "⌕ Search ⌘K" as a frosted capsule.
+/// "⌕ Search ⌘P" as a frosted capsule.
 struct SearchPill: View {
     let action: () -> Void
     @State private var hovering = false
@@ -88,7 +88,7 @@ struct SearchPill: View {
                     .font(.system(size: 12, weight: .medium))
                 Text("Search")
                     .font(Sky.Font.label)
-                Text("⌘K")
+                Text("⌘P")
                     .font(Sky.Font.meta)
                     .foregroundStyle(Sky.tertiary)
             }
