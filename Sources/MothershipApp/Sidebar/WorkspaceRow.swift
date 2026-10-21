@@ -100,6 +100,11 @@ struct WorkspaceRow: View {
                     .font(Sky.Font.meta)
                     .foregroundStyle(tertiaryText)
             }
+            if let pullRequest = model.pullRequest(for: workspace.id) {
+                PullRequestChip(status: pullRequest, onSelection: isSelected) {
+                    model.openPullRequest(pullRequest, in: workspace.id)
+                }
+            }
             HStack(spacing: 2) {
                 ForEach(sessions.prefix(3)) { session in
                     AgentStatusGlyph(

@@ -181,14 +181,17 @@ enum DemoSeed {
         // Focus the right pane so the left one (Claude, waiting on a permission) glows.
         main.focusedSurfaceID = model.split(direction: .right, focus: false)?.id
         let (web, _) = model.createWorkspace(cwd: existing(home + "/Desktop"), name: "web-dashboard", focus: false, insertAfterSelection: false)
-        _ = web
         let (infra, _) = model.createWorkspace(cwd: existing(home + "/Documents"), name: "infra", focus: false, insertAfterSelection: false)
         infra.colorHex = "7CC47F"
         infra.isPinned = false
         let (api, apiSurface) = model.createWorkspace(cwd: existing("/tmp"), name: "api-gateway", focus: false, insertAfterSelection: false)
-        _ = api
         // Show what a restored pane looks like.
         apiSurface.resumeOffer = AgentSessionKey(kind: .claude, sessionID: "demo-restored")
+        // Tasks (Best-of-3 in flight, Best-of-2 with one kept), their runs' workspaces, PRs.
+        DemoTasks.seed(
+            model, home: home, existing: existing,
+            named: ["mothership": main.id, "web-dashboard": web.id, "infra": infra.id, "api-gateway": api.id]
+        )
         model.createWorkspace(cwd: home, name: "scratch", focus: false, insertAfterSelection: false)
         model.selectWorkspace(main.id)
     }

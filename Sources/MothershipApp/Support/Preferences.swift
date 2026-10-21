@@ -12,6 +12,8 @@ enum PreferenceKey {
     /// "Use my location" for the sun's position (off: guessed from the time zone).
     static let skyUsesLocation = "sky.usesLocation"
     static let composerVisible = "composer.visible"
+    /// Shells and agents outlive the app (`mshipd`); read by the sessions host.
+    static let keepSessionsAlive = "sessions.keepAlive"
     /// Terminal cards at 88 % with a blur, letting the sky through.
     static let tintWithSky = "terminal.tintWithSky"
 
@@ -34,6 +36,7 @@ enum PreferenceKey {
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
+            keepSessionsAlive: true,
             Notifications.enabled: true,
             Notifications.permissionRequests: true,
             Notifications.needsInput: true,

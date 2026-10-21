@@ -1,4 +1,5 @@
 import AppKit
+import GitKit
 import QuartzCore
 import ShipModel
 import SwiftUI
@@ -9,6 +10,10 @@ struct PaneChromeModel: Equatable {
     var session: AgentSession?
     /// Keep the capsule up while an agent is active, not just on hover.
     var pinned: Bool
+    /// The workspace branch's open PR, shown as a chip.
+    var pullRequest: PullRequestStatus?
+    /// Set when this pane is one run of a Best-of-N task ("Compare runs").
+    var compareTask: UUID?
 }
 
 struct PaneActions {
@@ -17,6 +22,8 @@ struct PaneActions {
     var onSplitRight: () -> Void
     var onSplitDown: () -> Void
     var onClose: () -> Void
+    var onOpenPullRequest: () -> Void = {}
+    var onCompare: () -> Void = {}
 }
 
 /// One pane card (§6 Pane chrome, §8): radius 18, the terminal's own background, Day
@@ -230,7 +237,7 @@ final class PaneContainerView: NSView {
         }
         let view = PaneChrome(
             model: chrome, expanded: hovering, onSplitRight: actions.onSplitRight, onSplitDown: actions.onSplitDown,
-            onClose: actions.onClose
+            onClose: actions.onClose, onOpenPullRequest: actions.onOpenPullRequest, onCompare: actions.onCompare
         )
         if let host = chromeHost {
             host.rootView = view
@@ -378,11 +385,17 @@ struct PaneChrome: View {
     let onSplitRight: () -> Void
     let onSplitDown: () -> Void
     let onClose: () -> Void
+    var onOpenPullRequest: () -> Void = {}
+    var onCompare: () -> Void = {}
 
     var body: some View {
         HStack(spacing: 5) {
             if let session = model.session {
                 AgentStatusGlyph(kind: session.kind, state: session.state, unread: session.unread, hasPermission: session.pendingPermission != nil, size: 9)
+            }
+            if let pullRequest = model.pullRequest {
+                PullRequestChip(status: pullRequest, open: onOpenPullRequest)
+                    .scaleEffect(0.94)
             }
             if expanded {
                 Text(model.title)
@@ -390,6 +403,19 @@ struct PaneChrome: View {
                     .foregroundStyle(Sky.ink.opacity(0.8))
                     .lineLimit(1)
                     .frame(maxWidth: 220, alignment: .leading)
+                if model.compareTask != nil {
+                    Button(action: onCompare) {
+                        Text("Compare runs")
+                            .font(.system(size: 10.5, weight: .medium))
+                            .foregroundStyle(Sky.ink.opacity(0.8))
+                            .padding(.horizontal, 7)
+                            .frame(height: 16)
+                            .background(Capsule().fill(Sky.ink.opacity(0.08)))
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .help("See every run of this task side by side")
+                }
                 Rectangle().fill(Sky.ink.opacity(0.12)).frame(width: 1, height: 10)
                 chromeButton("rectangle.split.2x1", "Split Right (⌘D)", onSplitRight)
                 chromeButton("rectangle.split.1x2", "Split Down (⌘⇧D)", onSplitDown)

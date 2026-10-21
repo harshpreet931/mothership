@@ -81,6 +81,10 @@ struct ComposerView: View {
                 .focused($focused)
                 .onSubmit { send(queue: false) }
                 .onKeyPress(.return, phases: .down) { press in
+                    if press.modifiers.contains(.command), startsTask {
+                        startNow()
+                        return .handled
+                    }
                     guard press.modifiers.contains(.shift) else { return .ignored }
                     send(queue: true)
                     return .handled
@@ -189,21 +193,21 @@ struct ComposerView: View {
             text = ""
             return
         }
-        let agent = model.composerAgent
-        if let folder = taskFolder ?? model.taskDirectory() {
-            model.startTask(prompt, agent: agent, directory: folder)
-            text = ""
-            taskFolder = nil
-            model.closeComposer(refocusPane: false)
-            return
-        }
-        // No project to start in: ask, and keep the text if the panel is cancelled.
-        Task {
-            guard let folder = await model.chooseFolder(message: "Where should \(agent.displayName) work on this task?") else { return }
-            model.startTask(prompt, agent: agent, directory: folder)
-            if text.trimmingCharacters(in: .whitespacesAndNewlines) == prompt { text = "" }
-            model.closeComposer(refocusPane: false)
-        }
+        // "Start a task…" opens New Task, prefilled; the prompt moves into the sheet.
+        model.presentNewTask(prompt: prompt, repo: taskFolder ?? model.taskDirectory(), agents: [model.composerAgent])
+        text = ""
+        taskFolder = nil
+        model.closeComposer(refocusPane: false)
+    }
+
+    /// ⌘⏎: start with the defaults (the sheet opens only if something's missing or fails).
+    private func startNow() {
+        let prompt = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prompt.isEmpty else { return }
+        model.quickStartTask(prompt: prompt, repo: taskFolder ?? model.taskDirectory())
+        text = ""
+        taskFolder = nil
+        model.closeComposer(refocusPane: false)
     }
 
     private func dictate() {

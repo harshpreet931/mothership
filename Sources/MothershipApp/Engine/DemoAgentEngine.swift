@@ -394,7 +394,47 @@ actor DemoAgentEngine: AgentEngineProtocol {
                 },
             ]
         )
-        return [claudeRefactor, codexCharts, geminiDocs, claudeInfra, opencodeAPI]
+        return [claudeRefactor, codexCharts, geminiDocs, claudeInfra, opencodeAPI] + taskRunScripts()
+    }
+
+    /// The runs of the demo tasks (see `DemoTasks`), bound in the order their workspaces open.
+    private static func taskRunScripts() -> [Script] {
+        func settled(_ kind: AgentKind, _ branch: String, _ title: String, _ model: String, _ apply: @escaping @Sendable (inout AgentSession) -> Void) -> Script {
+            Script(kind: kind, cwd: "~/code/api-gateway", branch: branch, title: title, model: model, steps: [Step(duration: 3600, apply: apply)])
+        }
+        let prompt = "Return X-RateLimit-Limit, X-RateLimit-Remaining and Retry-After on every API response, with tests, and document them."
+        return [
+            settled(.claude, "mship/rate-limit-headers-claude", "Rate-limit headers", "claude-opus-4-5") { session in
+                session.lastUserPrompt = prompt
+                session.state = .idle
+                session.summary = "Headers on every response · 3 new tests"
+                session.lastAssistantMessage = "Every response now carries `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset`; 429s add `Retry-After` in seconds. Table-driven tests cover the first request, the last allowed one and a burst."
+            },
+            settled(.codex, "mship/rate-limit-headers-codex", "Rate-limit headers", "gpt-5-codex") { session in
+                session.lastUserPrompt = prompt
+                session.state = .working(tool: "apply_patch")
+                session.summary = "Adding the headers to openapi.yaml"
+                session.lastAssistantMessage = "The limiter sets the headers now. Adding them to openapi.yaml so the generated clients and the docs pick them up."
+            },
+            settled(.gemini, "mship/rate-limit-headers-gemini", "Rate-limit headers", "gemini-2.5-pro") { session in
+                session.lastUserPrompt = prompt
+                session.state = .needsInput(.question)
+                session.summary = "Asks: seconds or HTTP date for Retry-After?"
+                session.lastAssistantMessage = "Should Retry-After be seconds or an HTTP date? Both are valid; seconds is simpler for clients. I also replaced the legacy limiter while I was in there."
+            },
+            settled(.claude, "mship/flaky-checkout-claude", "Fix the flaky checkout test", "claude-sonnet-4-5") { session in
+                session.lastUserPrompt = "checkout.spec.ts fails about one run in ten on CI. Find the race and fix it properly."
+                session.state = .idle
+                session.summary = "Race fixed · 50/50 green runs"
+                session.lastAssistantMessage = "The total rendered before the cart refetch finished. The test now waits for the refetch, and applyCoupon awaits it too; 50 runs in a row are green."
+            },
+            settled(.opencode, "mship/flaky-checkout-opencode", "Fix the flaky checkout test", "claude-sonnet-4-5") { session in
+                session.lastUserPrompt = "checkout.spec.ts fails about one run in ten on CI. Find the race and fix it properly."
+                session.state = .idle
+                session.summary = "Added retries to the checkout spec"
+                session.lastAssistantMessage = "Set retries: 2 for the checkout project. It passes reliably now, though the underlying timing issue is still there."
+            },
+        ]
     }
 
     /// What a hook install would write, for the consent sheet in demo mode.
