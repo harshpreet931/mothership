@@ -42,8 +42,10 @@ enum Sky {
 
     static let ink = Color(nsColor: .skyInk)
     static let onInk = Color(nsColor: .skyOnInk)
-    static let secondary = Color(nsColor: .skyInk.withAlphaComponent(0.56))
-    static let tertiary = Color(nsColor: .skyInk.withAlphaComponent(0.36))
+    /// Secondary and tertiary text keep ≥ 4.5:1 over glass on every sky (ink 56 %/36 %
+    /// measured ~4.4 and ~2.3–3:1).
+    static let secondary = Color(nsColor: .skySecondary)
+    static let tertiary = Color(nsColor: .skyTertiary)
     static let glassFill = Color(nsColor: .skyGlassFill)
     /// Glass over busy content (terminal text): the §9 scrim, folded into the tint.
     static let glassDense = Color(nsColor: .skyGlassDense)
@@ -98,6 +100,8 @@ extension NSColor {
     static let skyAttentionSoft = dynamic(light: rgb(0xFF7A1A, 0.14), dark: rgb(0xFF8A33, 0.18))
     static let skyDanger = dynamic(light: rgb(0xE5484D), dark: rgb(0xF2555A))
     static let skyRecess = dynamic(light: rgb(0x0D0E11, 0.05), dark: rgb(0x000000, 0.28))
+    static let skySecondary = dynamic(light: rgb(0x0D0E11, 0.68), dark: rgb(0xF4F5F7, 0.64))
+    static let skyTertiary = dynamic(light: rgb(0x0D0E11, 0.58), dark: rgb(0xF4F5F7, 0.48))
     static let skySelection = dynamic(light: rgb(0x0D0E11), dark: rgb(0xFFFFFF, 0.16))
     static let skySelectionStroke = dynamic(light: rgb(0x0D0E11, 0), dark: rgb(0xFFFFFF, 0.2))
     static let skyOnSelection = NSColor.white
