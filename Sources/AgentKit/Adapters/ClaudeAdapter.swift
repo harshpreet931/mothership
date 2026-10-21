@@ -2,7 +2,7 @@ import Foundation
 import ShipModel
 import SystemProbe
 
-/// Claude Code (native binary, 2.1.x). See docs/agents/claude.md.
+/// Claude Code (native binary, 2.1.x). See docs/agents/claude-code.md.
 public struct ClaudeAdapter: AgentAdapter {
     public let kind = AgentKind.claude
     public var executableNames: [String] { ["claude"] }

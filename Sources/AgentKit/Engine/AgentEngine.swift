@@ -99,7 +99,7 @@ public actor AgentEngine: AgentEngineProtocol {
         })
         if configuration.transcriptWatching { await startTranscriptWatching() }
         if configuration.processScanning {
-            await performScan(.system)
+            await performScan(.system, deferTranscripts: true)
             tasks.append(Task { [weak self] in await self?.scanLoop() })
         }
         tasks.append(Task { [weak self] in await self?.integrationLoop() })
@@ -557,7 +557,9 @@ public actor AgentEngine: AgentEngineProtocol {
         await performScan(systemWide ? .system : .descendants(of: configuration.appProcessID))
     }
 
-    func performScan(_ scope: ScanScope) async {
+    /// `deferTranscripts`: load newly bound transcripts in the background (used by `start()`
+    /// so the first scan isn't held up by reading history).
+    func performScan(_ scope: ScanScope, deferTranscripts: Bool = false) async {
         let result = await scanner.scan(scope: scope)
         metrics.record(result)
         if scope == .system { lastFullScan = Date() } else { lastSurfaceScan = Date() }
@@ -573,7 +575,15 @@ public actor AgentEngine: AgentEngineProtocol {
         for root in result.roots {
             if let key = store.key(forPID: root.pid), let path = store[key]?.session.transcriptPath { paths.append(path) }
         }
-        for path in paths { await trackTranscript(path) }
+        let pending = paths.filter { !trackedTranscripts.contains($0) }
+        guard !pending.isEmpty else { return }
+        if deferTranscripts {
+            tasks.append(Task { [weak self] in
+                for path in pending { await self?.trackTranscript(path) }
+            })
+        } else {
+            for path in pending { await trackTranscript(path) }
+        }
     }
 
     func applyRoot(_ root: RootProcess, now: Date) {
