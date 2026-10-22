@@ -50,12 +50,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let runtime = TerminalRuntime.shared
         runtime.themeChoice = TerminalThemeChoice(storageValue: defaults.string(forKey: PreferenceKey.theme))
+        // Debug: MOTHERSHIP_TERMINAL_THEME="Catppuccin Latte" tries a theme without saving it.
+        if let name = environment["MOTHERSHIP_TERMINAL_THEME"], !name.isEmpty {
+            runtime.themeChoice = name == "mothership" ? .mothership : .named(name)
+        }
         let storedSize = defaults.double(forKey: PreferenceKey.fontSize)
         if storedSize > 0 { runtime.setFontSize(Float(storedSize)) }
 
         // Demo mode never touches the user's saved layout.
         let store: StateStore? = isDemo ? nil : StateStore()
         let model = AppModel(engine: makeAgentEngine(), runtime: runtime, store: store)
+        model.baseThemeChoice = runtime.themeChoice
         model.shellEnvironment = CLIShim.shellEnvironment(shimDirectory: CLIShim.installIfNeeded())
         self.model = model
         // Socket, notifications and browser panes; must exist before panes are restored.

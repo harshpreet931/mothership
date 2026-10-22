@@ -268,20 +268,36 @@ public struct ThemeIssue: Hashable, Sendable, CustomStringConvertible {
 /// The theme catalog. The catalog engineer replaces these stub bodies; signatures are fixed.
 public enum ThemeLibrary {
     /// Every built-in theme, default first ("mothership-sky", the sun cycle).
-    public static var builtIn: [Theme] { [] }
+    public static var builtIn: [Theme] { BuiltInThemes.catalog }
 
     public static let defaultThemeID = "mothership-sky"
 
     /// Built-ins plus valid user themes from `directory` (`*.json`); invalid files are skipped
     /// and reported.
     public static func load(userDirectory: URL) -> (themes: [Theme], problems: [String: [ThemeIssue]]) {
-        (builtIn, [:])
+        ThemeLoading.load(userDirectory: userDirectory, builtIn: builtIn)
     }
 
     /// Schema, color, contrast and distinctness checks. Errors make a theme unusable.
-    public static func validate(_ theme: Theme) -> [ThemeIssue] { [] }
+    /// Contrast and distinctness are errors for built-in ids and warnings for user themes.
+    public static func validate(_ theme: Theme) -> [ThemeIssue] {
+        ThemeValidation.validate(theme, asBuiltIn: BuiltInThemes.ids.contains(theme.id))
+    }
 
     /// The scene to show for a sun altitude (degrees): `fixed` returns its scene, `sunCycle`
     /// blends the two nearest phases continuously, `desktop` returns nil.
-    public static func scene(for theme: Theme, sunAltitude: Double) -> Scene? { theme.backdrop.scene }
+    public static func scene(for theme: Theme, sunAltitude: Double) -> Scene? {
+        switch theme.backdrop.kind {
+        case .fixed: return theme.backdrop.scene
+        case .sunCycle: return theme.backdrop.phases.flatMap { SceneBlending.scene(phases: $0, altitude: sunAltitude) } ?? theme.backdrop.scene
+        case .desktop: return nil
+        }
+    }
+
+    // MARK: Additions
+
+    public static func theme(id: String) -> Theme? { builtIn.first { $0.id == id } }
+
+    /// Pretty-printed JSON with sorted keys (stable bytes), for sharing a theme.
+    public static func export(_ theme: Theme) -> Data { ThemeLoading.export(theme) }
 }

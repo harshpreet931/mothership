@@ -87,10 +87,10 @@ final class RootView: NSView {
         let sidebarAllowed = screen.showsSidebar
         let docked = sidebarAllowed && !model.isSidebarCollapsed
         let sidebarVisible = docked || (sidebarAllowed && peeking)
-        // The composer floats over the bottom gutter; it never takes height from panes
-        // (bottom-row cards keep a clear margin under it instead). Home keeps a band.
+        // The composer gets its own band under the cards (a gap above and below), so it
+        // never covers a terminal.
         let composerShown = model.composerShown
-        let bottom = gutter
+        let bottom = composerShown ? Sky.composerBand : gutter
         let left = docked ? gutter * 2 + Sky.sidebarWidth : gutter
 
         let sidebarX = sidebarVisible ? gutter : -Sky.sidebarWidth - gutter
@@ -99,13 +99,12 @@ final class RootView: NSView {
         let area = screen == .home ? NSRect(x: 0, y: 0, width: size.width, height: size.height) : content
         let expanded = model.isComposerExpanded
         let composerWidth = min(expanded ? 640 : 300, max(160, area.width - 48))
-        let composerHeight: CGFloat = expanded ? Sky.composerHeight : Sky.composerPillHeight
         let composer = NSRect(
-            x: (area.midX - composerWidth / 2).rounded(), y: size.height - Sky.composerBottom - composerHeight,
-            width: composerWidth, height: composerShown ? composerHeight : 0
+            x: (area.midX - composerWidth / 2).rounded(), y: size.height - (Sky.composerBand + Sky.composerHeight) / 2,
+            width: composerWidth, height: composerShown ? Sky.composerHeight : 0
         )
         let screenFrame: NSRect = switch screen {
-        case .home: NSRect(x: 0, y: top, width: size.width, height: max(0, size.height - top - (composerShown ? Sky.composerClearance + gutter : bottom)))
+        case .home: NSRect(x: 0, y: top, width: size.width, height: max(0, size.height - top - bottom))
         case .settings: NSRect(x: 0, y: top, width: size.width, height: max(0, size.height - top))
         case .fleet, .workspaces, .compare, .diff: content
         }
@@ -183,7 +182,10 @@ final class RootView: NSView {
         skyView.apply(sky, animated: true)
         skyView.animationEnabled = model.skyClock.animates
         desktopBlur.isHidden = sky.kind != .desktop
-        onSkyChange?(sky.isDark, sky.kind == .desktop)
+        syncTerminalScheme()
+        if SkyContext.shared.skyIsDark != sky.isDark { SkyContext.shared.skyIsDark = sky.isDark }
+        // Content-led tone: the chrome takes the terminal's light or dark, not the sky's.
+        onSkyChange?(model.chromeIsDark, sky.kind == .desktop)
 
         if screen != lastScreen {
             // Keys must not reach a terminal that isn't on screen.
@@ -196,6 +198,20 @@ final class RootView: NSView {
         syncPalette()
         syncNewTask()
         animateLayout()
+    }
+
+    /// Terminals pick their theme's light or dark variant from the Mac's appearance (or the
+    /// sky's, with "Terminal follows the sky"), never from the chrome, which follows them.
+    private func syncTerminalScheme() {
+        model.applyTerminalSkyPairing()
+        let wanted: NSAppearance.Name = model.terminalPrefersDark ? .darkAqua : .aqua
+        guard canvas.appearance?.name != wanted else { return }
+        canvas.appearance = NSAppearance(named: wanted)
+        // The terminals adopt the scheme as they see the change; re-read their background
+        // once they have.
+        for delay in [0.05, 0.4] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in self?.model.appearanceVersion += 1 }
+        }
     }
 
     /// New Task floats over everything like the palette, with its own scrim.
@@ -332,6 +348,7 @@ struct ScreenLayer: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .transition(.opacity)
+        .environment(\.skyColorScheme, model.skyState.isDark ? .dark : .light)
     }
 }
 
@@ -342,6 +359,7 @@ struct EmptyStateView: View {
             MothershipMark(variant: .sky, size: 72)
                 .padding(.bottom, -8)
             Text("Nothing running.")
+                .onSkyText()
                 .font(Sky.Font.serifL)
                 .foregroundStyle(Sky.ink)
             HStack(spacing: 8) {

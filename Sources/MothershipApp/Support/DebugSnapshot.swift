@@ -34,6 +34,13 @@ enum DebugSnapshot {
             case "fleet": model.show(.fleet)
             case "palette": model.isPalettePresented = true
             case "composer": model.openComposer()
+            case "longpath":
+                // A deep project folder (the user's own, when present) selected, to check row
+                // truncation and the card's top edge.
+                let home = FileManager.default.homeDirectoryForCurrentUser.path
+                let candidates = [home + "/Desktop/Juspay/xyne-spaces-test", FileManager.default.currentDirectoryPath]
+                let path = candidates.first { FileManager.default.fileExists(atPath: $0) } ?? home
+                model.createWorkspace(cwd: path, focus: true)
             case "newtask":
                 model.presentNewTask(
                     prompt: "Return X-RateLimit-Limit, X-RateLimit-Remaining and Retry-After on every API response, with tests, and document them in docs/api.",
@@ -130,8 +137,9 @@ enum DebugSnapshot {
             NSLog("Mothership: snapshot %@", capture(window, to: URL(fileURLWithPath: path)) ? path : "failed")
             SnapshotMode.shared.active = false
             let sky = window.model.skyState
-            NSLog("Mothership: sky %@ altitude %.1f° luminance %.3f dark %@ paused %@", sky.phaseName, sky.sun.altitude, sky.palette.luminance,
-                  sky.isDark ? "yes" : "no", (window.window?.contentView as? RootView)?.skyView.isPaused == true ? "yes" : "no")
+            NSLog("Mothership: sky %@ altitude %.1f° luminance %.3f sky-dark %@ chrome %@ (terminal %@) paused %@", sky.phaseName, sky.sun.altitude,
+                  sky.palette.luminance, sky.isDark ? "yes" : "no", window.model.chromeIsDark ? "dark" : "light",
+                  window.model.runtime.themeChoice.storageValue, (window.window?.contentView as? RootView)?.skyView.isPaused == true ? "yes" : "no")
             // MOTHERSHIP_SNAPSHOT_SKY_PAIR=1: the sky alone, twice, 1.5 s apart (proves it moves).
             if ProcessInfo.processInfo.environment["MOTHERSHIP_SNAPSHOT_SKY_PAIR"] != nil {
                 let base = (path as NSString).deletingPathExtension

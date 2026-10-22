@@ -344,7 +344,7 @@ private struct AgentChip: View {
             .background {
                 let shape = Capsule(style: .continuous)
                 if selected {
-                    shape.fill(Sky.selection).overlay(shape.strokeBorder(Sky.selectionStroke, lineWidth: 1))
+                    SelectionFill(shape: shape)
                 } else {
                     shape.fill(Sky.ink.opacity(hovering ? 0.09 : 0.05))
                 }

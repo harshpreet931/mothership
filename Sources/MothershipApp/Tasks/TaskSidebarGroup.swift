@@ -193,8 +193,7 @@ struct TaskRunRow: View {
         .background {
             let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
             if isSelected {
-                shape.fill(Sky.selection)
-                    .overlay(shape.strokeBorder(Sky.selectionStroke, lineWidth: 1))
+                SelectionFill(shape: shape)
                     .matchedGeometryEffect(id: "selection", in: selectionNamespace)
             } else if hovering {
                 shape.fill(Sky.ink.opacity(0.06))

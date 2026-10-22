@@ -104,6 +104,7 @@ struct DiffView: View {
                 .font(Sky.Font.meta)
                 .foregroundStyle(Sky.secondary)
             }
+            .onSkyText()
             Spacer(minLength: 12)
             Button { openFind() } label: {
                 HStack(spacing: 6) {
@@ -113,6 +114,7 @@ struct DiffView: View {
                 }
             }
             .buttonStyle(GhostPillStyle(height: 30, foreground: Sky.ink.opacity(0.8)))
+            .onSkyText()
             Button("Open pane") { model.openRunPane(run) }
                 .buttonStyle(SecondaryPillStyle(height: 30))
         }
@@ -154,7 +156,7 @@ struct DiffView: View {
                         .padding(.vertical, 7)
                         .background {
                             let shape = RoundedRectangle(cornerRadius: Sky.radiusControl, style: .continuous)
-                            if selected { shape.fill(Sky.selection).overlay(shape.strokeBorder(Sky.selectionStroke, lineWidth: 1)) }
+                            if selected { SelectionFill(shape: shape) }
                         }
                         .contentShape(Rectangle())
                     }
