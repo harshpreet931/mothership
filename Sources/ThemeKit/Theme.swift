@@ -76,7 +76,7 @@ public enum ThemeTone: String, Sendable, Codable, CaseIterable {
 
 /// Where the sun is, coarse enough for scene keyframes. Altitudes: night < −12° ≤ twilight
 /// < −6° ≤ blueHour < 0° ≤ goldenHour < 8° ≤ day.
-public enum SunPhase: String, Sendable, Codable, CaseIterable {
+public enum SunPhase: String, Sendable, Codable, CaseIterable, CodingKeyRepresentable {
     case night, twilight, blueHour, goldenHour, day
 }
 
