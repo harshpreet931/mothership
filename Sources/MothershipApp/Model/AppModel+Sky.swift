@@ -118,7 +118,7 @@ extension AppModel {
     /// from a Mothership pane unless "Agents running outside Mothership" is on.
     func shouldSurface(_ event: AttentionEvent, now: Date = Date()) -> Bool {
         guard now.timeIntervalSince(event.date) < 120 else { return false }
-        if isExternal(event), !UserDefaults.standard.bool(forKey: PreferenceKey.Notifications.externalAgents) { return false }
+        if isExternal(event), !PreferenceStore.defaults.bool(forKey: PreferenceKey.Notifications.externalAgents) { return false }
         return true
     }
 

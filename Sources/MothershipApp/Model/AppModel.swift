@@ -84,20 +84,20 @@ final class AppModel {
 
     /// The chosen theme (Settings → Appearance → Themes, ⌘K "Theme: …").
     var themeID: String = ThemePreferences.initialThemeID() {
-        didSet { if persistsTheme { UserDefaults.standard.set(themeID, forKey: PreferenceKey.themeID) } }
+        didSet { if persistsTheme { PreferenceStore.defaults.set(themeID, forKey: PreferenceKey.themeID) } }
     }
     /// Off when a debug override (MOTHERSHIP_THEME, MOTHERSHIP_SKY) picks the theme: then
     /// no theme setting is saved.
     @ObservationIgnored var persistsTheme = true
     /// "Day and night themes": switch at sunrise and sunset, like macOS appearance.
-    var themeScheduled = UserDefaults.standard.bool(forKey: PreferenceKey.themeScheduled) {
-        didSet { if persistsTheme { UserDefaults.standard.set(themeScheduled, forKey: PreferenceKey.themeScheduled) } }
+    var themeScheduled = PreferenceStore.defaults.bool(forKey: PreferenceKey.themeScheduled) {
+        didSet { if persistsTheme { PreferenceStore.defaults.set(themeScheduled, forKey: PreferenceKey.themeScheduled) } }
     }
-    var dayThemeID = UserDefaults.standard.string(forKey: PreferenceKey.dayThemeID) ?? ThemeLibrary.defaultThemeID {
-        didSet { if persistsTheme { UserDefaults.standard.set(dayThemeID, forKey: PreferenceKey.dayThemeID) } }
+    var dayThemeID = PreferenceStore.defaults.string(forKey: PreferenceKey.dayThemeID) ?? ThemeLibrary.defaultThemeID {
+        didSet { if persistsTheme { PreferenceStore.defaults.set(dayThemeID, forKey: PreferenceKey.dayThemeID) } }
     }
-    var nightThemeID = UserDefaults.standard.string(forKey: PreferenceKey.nightThemeID) ?? "midnight" {
-        didSet { if persistsTheme { UserDefaults.standard.set(nightThemeID, forKey: PreferenceKey.nightThemeID) } }
+    var nightThemeID = PreferenceStore.defaults.string(forKey: PreferenceKey.nightThemeID) ?? "midnight" {
+        didSet { if persistsTheme { PreferenceStore.defaults.set(nightThemeID, forKey: PreferenceKey.nightThemeID) } }
     }
     /// Per-workspace overrides (a prod workspace in Ember), shown while it's selected.
     var workspaceThemes: [WorkspaceID: String] = ThemePreferences.loadWorkspaceThemes() {
@@ -110,9 +110,9 @@ final class AppModel {
     /// Gallery hover: the whole window previews this theme until the pointer leaves.
     var previewThemeID: String?
     /// "Use the theme's terminal colors" (default: on unless the Ghostty config sets a theme).
-    var usesThemeTerminal = UserDefaults.standard.object(forKey: PreferenceKey.usesThemeTerminal) as? Bool ?? !TerminalRuntime.shared.userConfigHasTheme {
+    var usesThemeTerminal = PreferenceStore.defaults.object(forKey: PreferenceKey.usesThemeTerminal) as? Bool ?? !TerminalRuntime.shared.userConfigHasTheme {
         didSet {
-            if persistsTheme { UserDefaults.standard.set(usesThemeTerminal, forKey: PreferenceKey.usesThemeTerminal) }
+            if persistsTheme { PreferenceStore.defaults.set(usesThemeTerminal, forKey: PreferenceKey.usesThemeTerminal) }
             applyTerminalTheme()
         }
     }
@@ -122,21 +122,21 @@ final class AppModel {
     /// The sun's position for the sky, plus "Animate sky" and "Use my location".
     @ObservationIgnored let skyClock = SkyClock()
     /// "Terminal follows the sky": a dark theme's light sibling by day (off by default).
-    var terminalFollowsSky = UserDefaults.standard.bool(forKey: PreferenceKey.terminalFollowsSky) {
+    var terminalFollowsSky = PreferenceStore.defaults.bool(forKey: PreferenceKey.terminalFollowsSky) {
         didSet {
-            UserDefaults.standard.set(terminalFollowsSky, forKey: PreferenceKey.terminalFollowsSky)
+            PreferenceStore.defaults.set(terminalFollowsSky, forKey: PreferenceKey.terminalFollowsSky)
             applyTerminalTheme()
         }
     }
     /// The theme the user chose; "Terminal follows the sky" swaps around it, never over it.
     @ObservationIgnored var baseThemeChoice: TerminalThemeChoice = .automatic
-    var isComposerVisible = UserDefaults.standard.object(forKey: PreferenceKey.composerVisible) as? Bool ?? true {
-        didSet { UserDefaults.standard.set(isComposerVisible, forKey: PreferenceKey.composerVisible) }
+    var isComposerVisible = PreferenceStore.defaults.object(forKey: PreferenceKey.composerVisible) as? Bool ?? true {
+        didSet { PreferenceStore.defaults.set(isComposerVisible, forKey: PreferenceKey.composerVisible) }
     }
     /// Terminal cards at 88 % with a blur behind them (§8 "Tint with sky").
-    var tintWithSky = UserDefaults.standard.bool(forKey: PreferenceKey.tintWithSky) {
+    var tintWithSky = PreferenceStore.defaults.bool(forKey: PreferenceKey.tintWithSky) {
         didSet {
-            UserDefaults.standard.set(tintWithSky, forKey: PreferenceKey.tintWithSky)
+            PreferenceStore.defaults.set(tintWithSky, forKey: PreferenceKey.tintWithSky)
             runtime.backgroundOpacity = tintWithSky ? 0.88 : 1
         }
     }

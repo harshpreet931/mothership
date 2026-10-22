@@ -331,13 +331,13 @@ struct AppearanceSettings: View {
         model.baseThemeChoice = choice
         model.runtime.themeChoice = choice
         model.applyTerminalTheme()
-        UserDefaults.standard.set(choice.storageValue, forKey: PreferenceKey.theme)
+        PreferenceStore.defaults.set(choice.storageValue, forKey: PreferenceKey.theme)
     }
 
     private func setFont(_ size: Float) {
         model.runtime.setFontSize(size)
         fontSize = model.runtime.fontSize
-        UserDefaults.standard.set(Double(fontSize), forKey: PreferenceKey.fontSize)
+        PreferenceStore.defaults.set(Double(fontSize), forKey: PreferenceKey.fontSize)
     }
 }
 
@@ -373,7 +373,7 @@ struct ThemeMenu: View {
 // MARK: General
 
 struct GeneralSettings: View {
-    @AppStorage(PreferenceKey.keepSessionsAlive) private var keepAlive = true
+    @AppStorage(PreferenceKey.keepSessionsAlive, store: PreferenceStore.defaults) private var keepAlive = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -402,16 +402,16 @@ struct GeneralSettings: View {
 // MARK: Notifications
 
 struct NotificationSettings: View {
-    @AppStorage(PreferenceKey.Notifications.enabled) private var enabled = true
-    @AppStorage(PreferenceKey.Notifications.permissionRequests) private var permissions = true
-    @AppStorage(PreferenceKey.Notifications.needsInput) private var needsInput = true
-    @AppStorage(PreferenceKey.Notifications.finished) private var finished = true
-    @AppStorage(PreferenceKey.Notifications.failed) private var failed = true
-    @AppStorage(PreferenceKey.Notifications.terminalNotifications) private var terminal = true
-    @AppStorage(PreferenceKey.Notifications.sound) private var sound = true
-    @AppStorage(PreferenceKey.Notifications.dockBadge) private var dockBadge = true
-    @AppStorage(PreferenceKey.Notifications.whenVisible) private var whenVisible = false
-    @AppStorage(PreferenceKey.Notifications.externalAgents) private var externalAgents = false
+    @AppStorage(PreferenceKey.Notifications.enabled, store: PreferenceStore.defaults) private var enabled = true
+    @AppStorage(PreferenceKey.Notifications.permissionRequests, store: PreferenceStore.defaults) private var permissions = true
+    @AppStorage(PreferenceKey.Notifications.needsInput, store: PreferenceStore.defaults) private var needsInput = true
+    @AppStorage(PreferenceKey.Notifications.finished, store: PreferenceStore.defaults) private var finished = true
+    @AppStorage(PreferenceKey.Notifications.failed, store: PreferenceStore.defaults) private var failed = true
+    @AppStorage(PreferenceKey.Notifications.terminalNotifications, store: PreferenceStore.defaults) private var terminal = true
+    @AppStorage(PreferenceKey.Notifications.sound, store: PreferenceStore.defaults) private var sound = true
+    @AppStorage(PreferenceKey.Notifications.dockBadge, store: PreferenceStore.defaults) private var dockBadge = true
+    @AppStorage(PreferenceKey.Notifications.whenVisible, store: PreferenceStore.defaults) private var whenVisible = false
+    @AppStorage(PreferenceKey.Notifications.externalAgents, store: PreferenceStore.defaults) private var externalAgents = false
 
     var body: some View {
         GlassList {

@@ -231,7 +231,7 @@ final class CommandRouter: NSObject, NSMenuItemValidation {
             model.quitAndEndAllSessions()
         }
         if [.increaseFontSize, .decreaseFontSize, .resetFontSize].contains(command) {
-            UserDefaults.standard.set(model.runtime.hasFontSizeOverride ? Double(model.runtime.fontSize) : 0, forKey: PreferenceKey.fontSize)
+            PreferenceStore.defaults.set(model.runtime.hasFontSizeOverride ? Double(model.runtime.fontSize) : 0, forKey: PreferenceKey.fontSize)
         }
     }
 

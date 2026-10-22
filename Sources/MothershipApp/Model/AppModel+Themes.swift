@@ -150,7 +150,7 @@ extension AppModel {
 enum ThemePreferences {
     /// The stored theme, migrating the pre-theme sky preset once.
     static func initialThemeID() -> String {
-        let defaults = UserDefaults.standard
+        let defaults = PreferenceStore.defaults
         if let id = defaults.string(forKey: PreferenceKey.themeID) { return id }
         guard let legacy = defaults.string(forKey: PreferenceKey.sky).flatMap(LegacySkyPreset.init(rawValue:)) else {
             return ThemeLibrary.defaultThemeID

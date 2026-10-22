@@ -46,7 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
         default: break
         }
-        let defaults = UserDefaults.standard
+        let defaults = PreferenceStore.defaults
 
         let runtime = TerminalRuntime.shared
         runtime.themeChoice = TerminalThemeChoice(storageValue: defaults.string(forKey: PreferenceKey.theme))
