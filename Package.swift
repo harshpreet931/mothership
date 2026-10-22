@@ -30,6 +30,10 @@ let package = Package(
         .target(name: "GitKit", dependencies: ["ShipModel"]),
         // Session host protocol + client: PTYs owned by `mshipd` so shells outlive the app.
         .target(name: "SessionHost", dependencies: ["ShipModel"]),
+        // Themes as data: scenes, palettes, terminal pairings, built-in catalog, user themes.
+        .target(name: "ThemeKit"),
+        // Core Animation renderers for theme scenes (stars, aurora, particles, clouds, …).
+        .target(name: "BackdropKit", dependencies: ["ThemeKit"]),
         // On-device intelligence (Apple Foundation Models): titles and summaries.
         .target(name: "Intelligence", dependencies: ["ShipModel"]),
         // libghostty surface wrapper behind a small protocol.
@@ -48,7 +52,7 @@ let package = Package(
             dependencies: [
                 "ShipModel", "ShipProtocol", "SystemProbe", "AgentKit",
                 "ControlPlane", "BrowserKit", "AttentionKit", "TerminalEngine",
-                "GitKit", "SessionHost", "Intelligence",
+                "GitKit", "SessionHost", "Intelligence", "ThemeKit", "BackdropKit",
             ]
         ),
         // The CLI used by agent hooks, scripts, and `mship mcp`.
@@ -69,6 +73,11 @@ let package = Package(
         .testTarget(name: "BrowserKitTests", dependencies: ["BrowserKit", "AttentionKit", "ShipModel"]),
         .testTarget(name: "TerminalEngineTests", dependencies: ["TerminalEngine"]),
         .testTarget(name: "GitKitTests", dependencies: ["GitKit"]),
+        .testTarget(
+            name: "ThemeKitTests",
+            dependencies: ["ThemeKit", .product(name: "GhosttyTheme", package: "libghostty-spm")]
+        ),
+        .testTarget(name: "BackdropKitTests", dependencies: ["BackdropKit", "ThemeKit"]),
         .testTarget(name: "SessionHostTests", dependencies: ["SessionHost"]),
     ],
     swiftLanguageModes: [.v6]

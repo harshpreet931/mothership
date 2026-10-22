@@ -29,6 +29,8 @@ scripts/qa.sh                            # end-to-end QA against a scratch-home 
 | `GitKit` | Repo info, worktrees, diffs, GitHub PR status (`gh`). |
 | `SessionHost` | Session-daemon protocol + client: PTYs owned by `mshipd` so shells outlive the app. |
 | `Intelligence` | On-device Foundation Models: session titles and summaries. |
+| `ThemeKit` | Themes as JSON data: scenes, palettes, terminal pairings, built-in catalog, user themes, validation. |
+| `BackdropKit` | Core Animation renderers for theme scenes (stars, aurora, particles, clouds, …). |
 | `MothershipApp` | The AppKit/SwiftUI app. Composition root. |
 | `mship` | CLI: `mship hook`, `notify`, `open`, `split`, `status`, `mcp`. |
 | `mship-probe` | Dev tool printing what the agent engine sees. |
