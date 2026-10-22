@@ -1,15 +1,22 @@
 import AppKit
 import TerminalEngine
+import ThemeKit
 
 /// Content-led tone (docs/DESIGN.md §4): the chrome — glass, text, selection, composer,
 /// toasts — takes the terminal's light or dark, because the terminal is what fills the
 /// window. The sky keeps following the sun around and through the glass. A dark terminal
 /// by day is a sunny day seen from a cockpit: dark glass over a bright sky.
 extension AppModel {
-    /// Dark chrome when the terminal's background is dark.
+    /// Dark chrome when the terminal's background is dark, unless the active theme forces
+    /// a tone.
     var chromeIsDark: Bool {
-        _ = appearanceVersion
-        return Self.isDark(runtime.backgroundColor)
+        switch activeTheme.tone {
+        case .dark: return true
+        case .light: return false
+        case .auto:
+            _ = appearanceVersion
+            return Self.isDark(runtime.backgroundColor)
+        }
     }
 
     /// The light/dark variant the terminal's theme should show: the Mac's appearance (as
@@ -40,11 +47,14 @@ extension AppModel {
         }
     }
 
-    /// By day, swap a dark theme for its light counterpart; at night (or when off) restore
-    /// the user's own choice.
-    func applyTerminalSkyPairing() {
+    /// The terminal's colors: the active theme's pairing ("Use the theme's terminal
+    /// colors"), else by day a dark theme's light sibling ("Terminal follows the sky"),
+    /// else the user's own choice, restored as soon as neither applies.
+    func applyTerminalTheme() {
         let wanted: TerminalThemeChoice
-        if terminalFollowsSky, !skyState.isDark, let light = terminalDayTheme {
+        if usesThemeTerminal, let name = themeTerminalName {
+            wanted = .named(name)
+        } else if terminalFollowsSky, !skyState.isDark, let light = terminalDayTheme {
             wanted = .named(light)
         } else {
             wanted = baseThemeChoice

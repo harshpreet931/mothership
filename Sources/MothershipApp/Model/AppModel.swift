@@ -5,6 +5,7 @@ import ShipModel
 import ShipProtocol
 import SessionHost
 import TerminalEngine
+import ThemeKit
 
 /// What the window layer provides to the model.
 @MainActor
@@ -78,11 +79,44 @@ final class AppModel {
     /// Which full-window view is showing.
     var screen: AppScreen = .workspaces
     var settingsTab: SettingsTab = .agents
-    var skyPreset: SkyPreset = SkyPreset(rawValue: UserDefaults.standard.string(forKey: PreferenceKey.sky) ?? "") ?? .auto {
-        didSet { if persistsSky { UserDefaults.standard.set(skyPreset.rawValue, forKey: PreferenceKey.sky) } }
+
+    // MARK: Themes (see AppModel+Themes.swift)
+
+    /// The chosen theme (Settings → Appearance → Themes, ⌘K "Theme: …").
+    var themeID: String = ThemePreferences.initialThemeID() {
+        didSet { if persistsTheme { UserDefaults.standard.set(themeID, forKey: PreferenceKey.themeID) } }
     }
-    /// Off when a debug override (MOTHERSHIP_SKY) picks the sky.
-    @ObservationIgnored var persistsSky = true
+    /// Off when a debug override (MOTHERSHIP_THEME, MOTHERSHIP_SKY) picks the theme: then
+    /// no theme setting is saved.
+    @ObservationIgnored var persistsTheme = true
+    /// "Day and night themes": switch at sunrise and sunset, like macOS appearance.
+    var themeScheduled = UserDefaults.standard.bool(forKey: PreferenceKey.themeScheduled) {
+        didSet { if persistsTheme { UserDefaults.standard.set(themeScheduled, forKey: PreferenceKey.themeScheduled) } }
+    }
+    var dayThemeID = UserDefaults.standard.string(forKey: PreferenceKey.dayThemeID) ?? ThemeLibrary.defaultThemeID {
+        didSet { if persistsTheme { UserDefaults.standard.set(dayThemeID, forKey: PreferenceKey.dayThemeID) } }
+    }
+    var nightThemeID = UserDefaults.standard.string(forKey: PreferenceKey.nightThemeID) ?? "midnight" {
+        didSet { if persistsTheme { UserDefaults.standard.set(nightThemeID, forKey: PreferenceKey.nightThemeID) } }
+    }
+    /// Per-workspace overrides (a prod workspace in Ember), shown while it's selected.
+    var workspaceThemes: [WorkspaceID: String] = ThemePreferences.loadWorkspaceThemes() {
+        didSet { ThemePreferences.saveWorkspaceThemes(workspaceThemes) }
+    }
+    /// Built-ins plus valid user themes from the themes folder.
+    var themes: [Theme] = ThemeLibrary.builtIn
+    /// User theme files that failed validation, by file name.
+    var themeProblems: [String: [ThemeIssue]] = [:]
+    /// Gallery hover: the whole window previews this theme until the pointer leaves.
+    var previewThemeID: String?
+    /// "Use the theme's terminal colors" (default: on unless the Ghostty config sets a theme).
+    var usesThemeTerminal = UserDefaults.standard.object(forKey: PreferenceKey.usesThemeTerminal) as? Bool ?? !TerminalRuntime.shared.userConfigHasTheme {
+        didSet {
+            if persistsTheme { UserDefaults.standard.set(usesThemeTerminal, forKey: PreferenceKey.usesThemeTerminal) }
+            applyTerminalTheme()
+        }
+    }
+    @ObservationIgnored var themeWatcher: ThemeDirectoryWatcher?
     /// The system's appearance, which the Desktop sky follows.
     var systemIsDark = true
     /// The sun's position for the sky, plus "Animate sky" and "Use my location".
@@ -91,7 +125,7 @@ final class AppModel {
     var terminalFollowsSky = UserDefaults.standard.bool(forKey: PreferenceKey.terminalFollowsSky) {
         didSet {
             UserDefaults.standard.set(terminalFollowsSky, forKey: PreferenceKey.terminalFollowsSky)
-            applyTerminalSkyPairing()
+            applyTerminalTheme()
         }
     }
     /// The theme the user chose; "Terminal follows the sky" swaps around it, never over it.

@@ -122,11 +122,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 model.plannedIntegrationChange = { kind in (try? await engine.plannedIntegrationContents(kind)) ?? nil }
             }
         }
-        // Debug aids for verifying UI (see DebugSnapshot): MOTHERSHIP_SKY picks a sky without
-        // saving it; MOTHERSHIP_SNAPSHOT_VIEW opens home | fleet | palette | settings[:tab].
-        if let sky = environment["MOTHERSHIP_SKY"].flatMap(SkyPreset.init(rawValue:)) {
-            model.persistsSky = false
-            model.skyPreset = sky
+        // Themes: built-ins plus the themes folder, hot-reloaded.
+        model.startThemes()
+        // Debug aids for verifying UI (see DebugSnapshot): MOTHERSHIP_THEME=<id> (or an old
+        // MOTHERSHIP_SKY preset name) picks a theme without saving it; MOTHERSHIP_SNAPSHOT_VIEW
+        // opens home | fleet | palette | settings[:tab] | ….
+        let legacySky = environment["MOTHERSHIP_SKY"].flatMap { LegacySkyPreset(rawValue: $0) }?.themeID
+        if let id = environment["MOTHERSHIP_THEME"] ?? legacySky, model.theme(id: id) != nil {
+            model.persistsTheme = false
+            model.themeID = id
+            // MOTHERSHIP_THEME_TERMINAL=1|0 tries "Use the theme's terminal colors" too.
+            if let terminal = environment["MOTHERSHIP_THEME_TERMINAL"] { model.usesThemeTerminal = terminal == "1" }
         }
         // MOTHERSHIP_SKY_TIME=HH:MM pins the sky's time of day.
         if let time = environment["MOTHERSHIP_SKY_TIME"] { model.skyClock.pinTime(time) }

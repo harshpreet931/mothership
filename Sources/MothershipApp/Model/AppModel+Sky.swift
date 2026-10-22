@@ -77,7 +77,6 @@ extension AppModel {
     // MARK: Sky / appearance
 
     /// The sky now showing: the preset at the sun's current position.
-    var skyState: SkyState { skyPreset.state(sun: skyClock.sun, systemDark: systemIsDark) }
 
     func show(_ screen: AppScreen) {
         guard self.screen != screen else { return }

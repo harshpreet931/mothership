@@ -5,8 +5,14 @@ import Foundation
 enum PreferenceKey {
     static let fontSize = "terminal.fontSize"
     static let theme = "terminal.theme"
-    /// `SkyPreset` raw value.
+    /// Pre-theme sky preset (`LegacySkyPreset`), read once to migrate.
     static let sky = "sky.preset"
+    /// Theme ids (ThemeKit): the chosen one, and the day/night schedule.
+    static let themeID = "theme.id"
+    static let themeScheduled = "theme.scheduled"
+    static let dayThemeID = "theme.day"
+    static let nightThemeID = "theme.night"
+    static let usesThemeTerminal = "theme.terminalColors"
     /// "Animate sky" (twinkling stars, drifting clouds).
     static let skyAnimates = "sky.animates"
     /// "Use my location" for the sun's position (off: guessed from the time zone).

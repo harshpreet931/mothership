@@ -1,75 +1,47 @@
 import AppKit
 import SwiftUI
+import ThemeKit
 
-/// Sky presets (§7). `auto` follows the sun; Day, Dusk and Night pin it; Graphite is flat
-/// near-black; Desktop lets the wallpaper through.
-enum SkyPreset: String, CaseIterable, Codable, Sendable {
+/// The sky presets from before themes (§7), kept only to migrate the old `sky.preset`
+/// preference and the `MOTHERSHIP_SKY` debug switch to theme ids.
+enum LegacySkyPreset: String, CaseIterable, Sendable {
     case auto, day, dusk, night, graphite, desktop
 
-    var title: String {
+    var themeID: String {
         switch self {
-        case .auto: "Follows the sun"
-        case .day: "Day"
-        case .dusk: "Dusk"
-        case .night: "Night"
-        case .graphite: "Graphite"
-        case .desktop: "Desktop"
+        case .auto, .day: ThemeLibrary.defaultThemeID
+        case .dusk: "golden-hour"
+        case .night: "midnight"
+        case .graphite: "graphite"
+        case .desktop: "desktop"
         }
-    }
-
-    /// Short label under a swatch.
-    var shortTitle: String { self == .auto ? "Sun" : title }
-
-    /// The sun a manual preset pins (an evening sun, so Dusk glows in the west).
-    var pinnedSun: SunPosition? {
-        switch self {
-        case .day: SunPosition(altitude: 34, isMorning: false)
-        case .dusk: SunPosition(altitude: -3.5, isMorning: false)
-        case .night: SunPosition(altitude: -26, isMorning: false)
-        case .auto, .graphite, .desktop: nil
-        }
-    }
-
-    /// What the sky shows for this preset, given the real sun.
-    func state(sun: SunPosition, systemDark: Bool) -> SkyState {
-        switch self {
-        case .graphite:
-            return SkyState(kind: .graphite, palette: .graphite, sun: sun, isDark: true)
-        case .desktop:
-            return SkyState(kind: .desktop, palette: .graphite, sun: sun, isDark: systemDark)
-        case .auto, .day, .dusk, .night:
-            let shown = pinnedSun ?? sun
-            let palette = SkyPalette.forAltitude(shown.altitude)
-            return SkyState(kind: .living, palette: palette, sun: shown, isDark: palette.isDark)
-        }
-    }
-
-    /// Top → middle → horizon, for Settings swatches.
-    var swatch: [Color] {
-        let palette: SkyPalette = switch self {
-        case .graphite, .desktop: .graphite
-        default: SkyPalette.forAltitude(pinnedSun?.altitude ?? 34)
-        }
-        return [palette.top, palette.middle, palette.horizon].map(\.color)
     }
 }
 
-/// The sky as it should look right now.
+/// The backdrop as it should look right now, for the active theme.
 struct SkyState: Equatable, Sendable {
-    enum Kind: Sendable { case living, graphite, desktop }
+    enum Kind: Sendable {
+        /// Mothership Sky, drawn natively from the sun model (`SkyPalette`).
+        case living
+        /// Any other theme's scene (`ThemeLibrary.scene(for:sunAltitude:)`).
+        case scene
+        /// Behind-window blur of the wallpaper.
+        case desktop
+    }
 
     var kind: Kind
     var palette: SkyPalette
     var sun: SunPosition
-    /// Dark chrome over this sky (from its luminance; Desktop follows the system).
+    /// The sky itself is dark (text drawn on it is white; light glass needs a lift).
     var isDark: Bool
+    var themeID: String = ThemeLibrary.defaultThemeID
+    var scene: ThemeKit.Scene?
 
     /// "Golden hour", "Night"… for Settings.
     var phaseName: String {
         switch kind {
-        case .graphite: return "Graphite"
         case .desktop: return "Desktop"
-        case .living:
+        case .living, .scene:
             let altitude = sun.altitude
             if altitude < -12 { return "Night" }
             if altitude < -6 { return "Twilight" }
@@ -77,6 +49,35 @@ struct SkyState: Equatable, Sendable {
             if altitude < 8 { return "Golden hour" }
             return "Day"
         }
+    }
+
+    /// The native living sky at the sun's position.
+    static func living(sun: SunPosition) -> SkyState {
+        let palette = SkyPalette.forAltitude(sun.altitude)
+        return SkyState(kind: .living, palette: palette, sun: sun, isDark: palette.isDark)
+    }
+}
+
+extension ThemeKit.Scene {
+    /// The gradient's color at `location` (0 top … 1 bottom), linear between stops.
+    func color(at location: Double) -> RGBA {
+        guard let first = gradient.first else { return RGBA(red: 0, green: 0, blue: 0) }
+        guard let upper = gradient.firstIndex(where: { $0.location >= location }) else { return gradient.last?.color ?? first.color }
+        guard upper > 0 else { return first.color }
+        let a = gradient[upper - 1], b = gradient[upper]
+        let span = max(b.location - a.location, 0.0001)
+        let t = (location - a.location) / span
+        return RGBA(
+            red: a.color.red + (b.color.red - a.color.red) * t, green: a.color.green + (b.color.green - a.color.green) * t,
+            blue: a.color.blue + (b.color.blue - a.color.blue) * t
+        )
+    }
+
+    /// Dark where chrome text would sit (the upper-middle of the window).
+    var isDark: Bool {
+        let samples = [0.2, 0.45].map { color(at: $0) }
+        let luminance = samples.map(\.luminance).reduce(0, +) / Double(samples.count)
+        return luminance < 0.2
     }
 }
 
