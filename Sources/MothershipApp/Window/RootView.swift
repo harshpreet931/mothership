@@ -10,8 +10,10 @@ final class RootView: NSView {
     let model: AppModel
     let router: CommandRouter
     let canvas: WorkspaceCanvas
-    /// The backdrop, behind the `SkyRendering` seam (BackdropKit's view slots in here).
+    /// The backdrop (BackdropKit, behind the `SkyRendering` seam).
     let skyView: any SkyRendering = RootView.makeSky()
+    /// A gallery hover was previewing at the last sync (its changes cross-fade faster).
+    private var wasPreviewing = false
     private let desktopBlur = NSVisualEffectView()
     private let screenHost: NSHostingView<ScreenLayer>
     private let sidebarHost: NSHostingView<SidebarView>
@@ -62,11 +64,10 @@ final class RootView: NSView {
     @available(*, unavailable)
     required init?(coder _: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    /// The one place the backdrop renderer is chosen. When BackdropKit's renderer lands,
-    /// an adapter around `BackdropView` (driven by `ThemeLibrary.scene(for:sunAltitude:)`)
-    /// is returned here instead.
+    /// The one place the backdrop renderer is chosen: BackdropKit's `BackdropView`, driven
+    /// by `ThemeLibrary.scene(for:sunAltitude:)` for the active theme.
     private static func makeSky() -> any SkyRendering {
-        LivingSkyView(frame: .zero)
+        SkyBackdropView(frame: .zero)
     }
 
     private static func host<V: View>(_ view: V) -> NSHostingView<V> {
@@ -189,8 +190,11 @@ final class RootView: NSView {
         // The active theme: its palette drives the Sky tokens, its scene the backdrop.
         model.applyThemeChrome()
         let sky = model.skyState
-        skyView.apply(sky, animated: true)
-        skyView.animationEnabled = model.skyClock.animates
+        // Sun steps and theme changes cross-fade over 1.5 s; a gallery hover over 0.6 s.
+        let previewing = model.previewThemeID != nil
+        skyView.apply(sky, transition: previewing || wasPreviewing ? 0.6 : 1.5)
+        wasPreviewing = previewing
+        skyView.motionLevel = model.skyMotionLevel
         desktopBlur.isHidden = sky.kind != .desktop
         syncTerminalScheme()
         if SkyContext.shared.skyIsDark != sky.isDark { SkyContext.shared.skyIsDark = sky.isDark }

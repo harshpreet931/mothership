@@ -34,7 +34,9 @@ enum PreferenceKey {
     static let dayThemeID = "theme.day"
     static let nightThemeID = "theme.night"
     static let usesThemeTerminal = "theme.terminalColors"
-    /// "Animate sky" (twinkling stars, drifting clouds).
+    /// Settings → Appearance → Motion (`SkyMotion`): full, subtle or off.
+    static let skyMotion = "sky.motion"
+    /// The old "Animate sky" switch, read once: off becomes Motion → Off.
     static let skyAnimates = "sky.animates"
     /// "Use my location" for the sun's position (off: guessed from the time zone).
     static let skyUsesLocation = "sky.usesLocation"

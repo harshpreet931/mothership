@@ -10,9 +10,10 @@ import Observation
 @Observable
 final class SkyClock {
     private(set) var sun: SunPosition
-    /// "Animate sky" (Settings → Appearance). Reduce Motion and Low Power still win.
-    var animates: Bool = PreferenceStore.defaults.object(forKey: PreferenceKey.skyAnimates) as? Bool ?? true {
-        didSet { PreferenceStore.defaults.set(animates, forKey: PreferenceKey.skyAnimates) }
+    /// Settings → Appearance → Motion. `MotionPolicy` lowers it on battery, in Low Power
+    /// Mode and in the background; Reduce Motion always wins.
+    var motion: SkyMotion = SkyMotion.stored(in: PreferenceStore.defaults) {
+        didSet { PreferenceStore.defaults.set(motion.rawValue, forKey: PreferenceKey.skyMotion) }
     }
     /// "Use my location": off by default; the time zone is a good enough guess.
     var usesLocation: Bool = PreferenceStore.defaults.bool(forKey: PreferenceKey.skyUsesLocation) {

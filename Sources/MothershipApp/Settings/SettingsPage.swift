@@ -217,11 +217,15 @@ struct AppearanceSettings: View {
                     Toggle("", isOn: Binding(get: { model.usesThemeTerminal }, set: { model.usesThemeTerminal = $0 }))
                         .toggleStyle(SkySwitchStyle())
                 }
-                GlassListRow(title: "Animate sky", subtitle: "Twinkling stars and drifting clouds. Rests while hidden, on Low Power or with Reduce Motion.") {
+                GlassListRow(title: "Motion", subtitle: motionSubtitle) {
                     Image(systemName: "sparkles").font(.system(size: 16)).frame(width: 24).foregroundStyle(Sky.ink.opacity(0.75))
                 } trailing: {
-                    Toggle("", isOn: Binding(get: { model.skyClock.animates }, set: { model.skyClock.animates = $0 }))
-                        .toggleStyle(SkySwitchStyle())
+                    SegmentedPill(
+                        items: SkyMotion.allCases.map { ($0, $0.title) },
+                        selection: Binding(get: { model.skyClock.motion }, set: { model.skyClock.motion = $0 }),
+                        height: 30
+                    )
+                    .fixedSize()
                 }
                 GlassListRow(title: "Use my location", subtitle: model.skyClock.locationNote ?? "Places the sun exactly. Otherwise it's guessed from your time zone.", showsDivider: false) {
                     Image(systemName: "location").font(.system(size: 16)).frame(width: 24).foregroundStyle(Sky.ink.opacity(0.75))
@@ -305,6 +309,17 @@ struct AppearanceSettings: View {
         let base = model.baseThemeName ?? "your theme"
         guard let light = model.terminalDayTheme else { return "No light sibling known for \(base)" }
         return "By day, \(base) becomes \(light); the chrome follows"
+    }
+
+    /// What the setting does, then why it's doing less right now (battery, Low Power…).
+    private var motionSubtitle: String {
+        let setting = model.skyClock.motion
+        if let reduction = MotionPolicy.reduction(setting: setting, conditions: MotionConditions.shared) { return reduction }
+        return switch setting {
+        case .full: "Everything moves; subtle on battery, still on Low Power"
+        case .subtle: "Gentle and light on power; still on battery"
+        case .off: "A still scene"
+        }
     }
 
     private var themeTerminalSubtitle: String {

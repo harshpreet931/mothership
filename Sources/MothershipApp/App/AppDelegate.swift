@@ -122,8 +122,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 model.plannedIntegrationChange = { kind in (try? await engine.plannedIntegrationContents(kind)) ?? nil }
             }
         }
-        // Themes: built-ins plus the themes folder, hot-reloaded.
+        // Themes: built-ins plus the themes folder, hot-reloaded. Then what the backdrop's
+        // motion depends on (battery, Low Power Mode, time in the background).
         model.startThemes()
+        MotionConditions.shared.start()
         // Debug aids for verifying UI (see DebugSnapshot): MOTHERSHIP_THEME=<id> (or an old
         // MOTHERSHIP_SKY preset name) picks a theme without saving it; MOTHERSHIP_SNAPSHOT_VIEW
         // opens home | fleet | palette | settings[:tab] | ….

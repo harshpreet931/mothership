@@ -1,4 +1,5 @@
 import AppKit
+import BackdropKit
 import Foundation
 import ShipModel
 import TerminalEngine
@@ -31,23 +32,28 @@ extension AppModel {
         return chosenTheme
     }
 
-    /// The backdrop for the active theme at the sun's position. Mothership Sky is drawn
-    /// natively from the sun model; every other theme from its ThemeKit scene.
+    /// The backdrop for the active theme at the sun's position (re-read every minute as
+    /// the sun moves). Mothership Sky is the catalog's sun-cycle scene like any other.
     var skyState: SkyState {
         let theme = activeTheme
         let sun = skyClock.sun
         switch theme.backdrop.kind {
         case .desktop:
-            return SkyState(kind: .desktop, palette: .graphite, sun: sun, isDark: systemIsDark, themeID: theme.id)
+            return SkyState(kind: .desktop, sun: sun, isDark: systemIsDark, themeID: theme.id)
         case .fixed, .sunCycle:
-            if theme.id == ThemeLibrary.defaultThemeID {
-                var state = SkyState.living(sun: sun)
-                state.themeID = theme.id
-                return state
-            }
             let scene = ThemeLibrary.scene(for: theme, sunAltitude: sun.altitude)
-            return SkyState(kind: .scene, palette: .graphite, sun: sun, isDark: scene?.isDark ?? true, themeID: theme.id, scene: scene)
+            return SkyState(kind: .scene, sun: sun, isDark: scene?.isDark ?? true, themeID: theme.id, scene: scene)
         }
+    }
+
+    /// How much the backdrop moves (`MotionPolicy`): the Motion setting, battery, Low Power,
+    /// the app in the background, and a gallery hover at full.
+    var skyMotionLevel: BackdropView.MotionLevel {
+        let conditions = MotionConditions.shared
+        return MotionPolicy.level(
+            setting: skyClock.motion, onBattery: conditions.onBattery, lowPower: conditions.lowPower,
+            idle: conditions.idle, previewing: previewThemeID != nil
+        )
     }
 
     // MARK: Choosing

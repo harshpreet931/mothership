@@ -281,9 +281,8 @@ private struct ThemeCard: View {
     }
 }
 
-/// The still for a theme card: BackdropKit's render when it can, else a sketch of the
-/// scene; with a mock of the theme's glass and its paired terminal. Rendered once per
-/// theme (and sun phase) and cached.
+/// The still for a theme card (BackdropKit's render; the scene's gradient until it's
+/// ready), with a mock of the theme's glass and its paired terminal.
 struct ThemeThumbnail: View {
     let theme: ThemeKit.Theme
     let altitude: Double
@@ -296,6 +295,12 @@ struct ThemeThumbnail: View {
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                         .frame(width: geometry.size.width, height: geometry.size.height)
+                } else if let scene = ThemeLibrary.scene(for: theme, sunAltitude: altitude) {
+                    // No still (no renderer): the scene's gradient.
+                    LinearGradient(
+                        stops: scene.gradient.map { Gradient.Stop(color: $0.color.color, location: $0.location) },
+                        startPoint: .top, endPoint: .bottom
+                    )
                 } else {
                     // Desktop: frosted wallpaper stand-in.
                     LinearGradient(colors: [Color(white: 0.62), Color(white: 0.78)], startPoint: .top, endPoint: .bottom)
@@ -336,22 +341,46 @@ struct ThemeThumbnail: View {
 }
 
 /// Theme stills, rendered once (per sun phase for sun-cycle themes).
+///
+/// Rendering flushes a Core Animation transaction, which runs AppKit's layout and would
+/// re-enter SwiftUI if it happened inside a view update. So a card only asks for its still;
+/// they render one per run loop turn, outside any update, and cards redraw as each arrives.
 @MainActor
+@Observable
 final class ThemeThumbnailCache {
     static let shared = ThemeThumbnailCache()
     private var images: [String: CGImage] = [:]
+    @ObservationIgnored private var queue: [(key: String, scene: ThemeKit.Scene)] = []
+    @ObservationIgnored private var requested: Set<String> = []
+    @ObservationIgnored private var rendering = false
 
+    /// The still if it's ready; otherwise nil, and it's on its way.
     func image(for theme: ThemeKit.Theme, altitude: Double) -> CGImage? {
         guard theme.backdrop.kind != .desktop else { return nil }
         // Sun-cycle stills only change by phase; 4° steps keep the cache small.
         let key = theme.backdrop.kind == .sunCycle ? "\(theme.id)#\(Int((altitude / 4).rounded()))" : theme.id
         if let cached = images[key] { return cached }
-        guard let scene = ThemeLibrary.scene(for: theme, sunAltitude: altitude) else { return nil }
-        let size = CGSize(width: 320, height: 200)
-        let rendered = BackdropView.renderImage(of: scene, size: size, scale: 2)?.cgImage(forProposedRect: nil, context: nil, hints: nil)
-            ?? SceneSketch.image(of: scene, size: size, scale: 2)
-        images[key] = rendered
-        return rendered
+        guard !requested.contains(key), let scene = ThemeLibrary.scene(for: theme, sunAltitude: altitude) else { return nil }
+        requested.insert(key)
+        queue.append((key, scene))
+        if !rendering {
+            rendering = true
+            DispatchQueue.main.async { MainActor.assumeIsolated { ThemeThumbnailCache.shared.renderNext() } }
+        }
+        return nil
+    }
+
+    private func renderNext() {
+        guard !queue.isEmpty else {
+            rendering = false
+            return
+        }
+        let (key, scene) = queue.removeFirst()
+        if let image = BackdropView.renderImage(of: scene, size: CGSize(width: 320, height: 200), scale: 2)?
+            .cgImage(forProposedRect: nil, context: nil, hints: nil) {
+            images[key] = image
+        }
+        DispatchQueue.main.async { MainActor.assumeIsolated { ThemeThumbnailCache.shared.renderNext() } }
     }
 
     /// The chrome tone a theme shows in its card (auto: by the scene's own brightness).

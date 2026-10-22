@@ -163,18 +163,12 @@ enum DebugSnapshot {
             NSLog("Mothership: snapshot %@", capture(window, to: URL(fileURLWithPath: path)) ? path : "failed")
             SnapshotMode.shared.active = false
             let sky = window.model.skyState
-            NSLog("Mothership: sky %@ altitude %.1f° luminance %.3f sky-dark %@ chrome %@ (terminal %@) paused %@", sky.phaseName, sky.sun.altitude,
-                  sky.palette.luminance, sky.isDark ? "yes" : "no", window.model.chromeIsDark ? "dark" : "light",
-                  window.model.runtime.themeChoice.storageValue, (window.window?.contentView as? RootView)?.skyView.isPaused == true ? "yes" : "no")
-            // MOTHERSHIP_SNAPSHOT_SKY_PAIR=1: the sky alone, twice, 1.5 s apart (proves it moves).
-            if ProcessInfo.processInfo.environment["MOTHERSHIP_SNAPSHOT_SKY_PAIR"] != nil {
-                let base = (path as NSString).deletingPathExtension
-                _ = captureSky(window, to: URL(fileURLWithPath: base + "-sky-a.png"))
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak window] in
-                    guard let window else { return }
-                    NSLog("Mothership: sky pair %@", captureSky(window, to: URL(fileURLWithPath: base + "-sky-b.png")) ? base : "failed")
-                }
-            }
+            let conditions = MotionConditions.shared
+            NSLog("Mothership: sky %@ %@ altitude %.1f° luminance %.3f sky-dark %@ chrome %@ (terminal %@) motion %@ (setting %@, battery %@, low power %@, idle %@) paused %@",
+                  sky.themeID, sky.phaseName, sky.sun.altitude, sky.luminance, sky.isDark ? "yes" : "no", window.model.chromeIsDark ? "dark" : "light",
+                  window.model.runtime.themeChoice.storageValue, window.model.skyMotionLevel.rawValue, window.model.skyClock.motion.rawValue,
+                  conditions.onBattery ? "yes" : "no", conditions.lowPower ? "yes" : "no", conditions.idle ? "yes" : "no",
+                  (window.window?.contentView as? RootView)?.skyView.isPaused == true ? "yes" : "no")
             logGeometry(window)
             let ports = window.model.ports.map { "\($0.port) \($0.process) ws=\(window.model.workspaceName(for: $0) ?? "-")" }
             NSLog("Mothership: ports %@", ports.joined(separator: ", "))
@@ -284,7 +278,8 @@ enum DebugSnapshot {
         }
     }
 
-    /// The sky's layers as they are this instant (twinkles mid-flight included).
+    /// The sky: BackdropKit's still of the scene on screen (the Desktop theme: a flat stand-in
+    /// for the wallpaper blur, which no snapshot can see).
     private static func drawSky(_ sky: any SkyRendering, model: AppModel, size: NSSize, dark: Bool, context: CGContext) {
         guard model.skyState.kind != .desktop else {
             NSColor(white: dark ? 0.16 : 0.82, alpha: 1).setFill()
@@ -294,23 +289,6 @@ enum DebugSnapshot {
         context.saveGState()
         sky.renderCurrentFrame(in: context)
         context.restoreGState()
-    }
-
-    /// Just the sky, for comparing frames (`MOTHERSHIP_SNAPSHOT_SKY_PAIR`).
-    static func captureSky(_ controller: MainWindowController, to url: URL) -> Bool {
-        guard let window = controller.window, let root = window.contentView as? RootView else { return false }
-        let size = root.bounds.size
-        let scale = window.backingScaleFactor
-        guard let context = CGContext(
-            data: nil, width: Int(size.width * scale), height: Int(size.height * scale), bitsPerComponent: 8, bytesPerRow: 0,
-            space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return false }
-        context.scaleBy(x: scale, y: scale)
-        root.skyView.renderCurrentFrame(in: context)
-        guard let image = context.makeImage() else { return false }
-        let rep = NSBitmapImageRep(cgImage: image)
-        guard let png = rep.representation(using: .png, properties: [:]) else { return false }
-        return (try? png.write(to: url)) != nil
     }
 
     /// `cacheDisplay` of `view` (its `rect`), drawn at `target` (bitmap coordinates).

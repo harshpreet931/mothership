@@ -21,16 +21,13 @@ enum LegacySkyPreset: String, CaseIterable, Sendable {
 /// The backdrop as it should look right now, for the active theme.
 struct SkyState: Equatable, Sendable {
     enum Kind: Sendable {
-        /// Mothership Sky, drawn natively from the sun model (`SkyPalette`).
-        case living
-        /// Any other theme's scene (`ThemeLibrary.scene(for:sunAltitude:)`).
+        /// The theme's scene (`ThemeLibrary.scene(for:sunAltitude:)`), drawn by BackdropKit.
         case scene
         /// Behind-window blur of the wallpaper.
         case desktop
     }
 
     var kind: Kind
-    var palette: SkyPalette
     var sun: SunPosition
     /// The sky itself is dark (text drawn on it is white; light glass needs a lift).
     var isDark: Bool
@@ -39,22 +36,20 @@ struct SkyState: Equatable, Sendable {
 
     /// "Golden hour", "Night"… for Settings.
     var phaseName: String {
-        switch kind {
-        case .desktop: return "Desktop"
-        case .living, .scene:
-            let altitude = sun.altitude
-            if altitude < -12 { return "Night" }
-            if altitude < -6 { return "Twilight" }
-            if altitude < 0 { return "Blue hour" }
-            if altitude < 8 { return "Golden hour" }
-            return "Day"
+        guard kind == .scene else { return "Desktop" }
+        switch ThemeLibrary.phase(forSunAltitude: sun.altitude) {
+        case .night: return "Night"
+        case .twilight: return "Twilight"
+        case .blueHour: return "Blue hour"
+        case .goldenHour: return "Golden hour"
+        case .day: return "Day"
         }
     }
 
-    /// The native living sky at the sun's position.
-    static func living(sun: SunPosition) -> SkyState {
-        let palette = SkyPalette.forAltitude(sun.altitude)
-        return SkyState(kind: .living, palette: palette, sun: sun, isDark: palette.isDark)
+    /// Brightness of the sky behind the chrome, for debug logs.
+    var luminance: Double {
+        guard let scene else { return 0 }
+        return [0.2, 0.45].map { scene.color(at: $0).luminance }.reduce(0, +) / 2
     }
 }
 
@@ -78,31 +73,5 @@ extension ThemeKit.Scene {
         let samples = [0.2, 0.45].map { color(at: $0) }
         let luminance = samples.map(\.luminance).reduce(0, +) / Double(samples.count)
         return luminance < 0.2
-    }
-}
-
-extension RGB {
-    var color: Color { Color(red: r, green: g, blue: b) }
-}
-
-/// Tiny deterministic PRNG so stars, clouds and noise never shimmer between renders.
-struct SplitMix {
-    private var state: UInt64
-    init(seed: UInt64) { state = seed }
-
-    mutating func next() -> UInt64 {
-        state &+= 0x9E37_79B9_7F4A_7C15
-        var z = state
-        z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
-        z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
-        return z ^ (z >> 31)
-    }
-
-    mutating func unit() -> Double {
-        Double(next() >> 11) / Double(1 << 53)
-    }
-
-    mutating func range(_ lower: Double, _ upper: Double) -> Double {
-        lower + unit() * (upper - lower)
     }
 }
