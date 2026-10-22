@@ -298,6 +298,16 @@ public enum ThemeLibrary {
 
     public static func theme(id: String) -> Theme? { builtIn.first { $0.id == id } }
 
+    /// The sun phase for an altitude in degrees: night < −12 ≤ twilight < −6 ≤ blueHour < 0 ≤
+    /// goldenHour < 8 ≤ day (the boundaries `SunPhase` documents). Not a number counts as night.
+    public static func phase(forSunAltitude altitude: Double) -> SunPhase {
+        guard altitude >= -12 else { return .night }
+        if altitude < -6 { return .twilight }
+        if altitude < 0 { return .blueHour }
+        if altitude < 8 { return .goldenHour }
+        return .day
+    }
+
     /// Pretty-printed JSON with sorted keys (stable bytes), for sharing a theme.
     public static func export(_ theme: Theme) -> Data { ThemeLoading.export(theme) }
 }

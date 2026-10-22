@@ -216,6 +216,26 @@ struct BlendingTests {
         #expect(moon > 0.1 && moon < 0.9)
     }
 
+    @Test func phaseBoundaries() {
+        let cases: [(Double, SunPhase)] = [
+            (-40, .night), (-12.01, .night), (-12, .twilight), (-6.01, .twilight), (-6, .blueHour), (-0.01, .blueHour),
+            (0, .goldenHour), (7.99, .goldenHour), (8, .day), (60, .day), (.nan, .night),
+        ]
+        for (altitude, phase) in cases { #expect(ThemeLibrary.phase(forSunAltitude: altitude) == phase, "\(altitude)°") }
+        // Each anchor sits inside its own phase.
+        for anchor in SceneBlending.anchors { #expect(ThemeLibrary.phase(forSunAltitude: anchor.altitude) == anchor.phase) }
+    }
+
+    /// The default theme matches the app's native sky (SunModel keyframes at the anchors).
+    @Test func skyMatchesTheAppsDayAndGoldenHour() throws {
+        let sky = try #require(ThemeLibrary.theme(id: "mothership-sky"))
+        let day = try #require(sky.backdrop.phases?[.day])
+        #expect(day.gradient.map(\.color.hex) == ["#2B6AD8", "#5C97E8", "#CBE1F6"])
+        let golden = try #require(sky.backdrop.phases?[.goldenHour])
+        #expect(golden.gradient.map(\.color.hex) == ["#3760AF", "#7496D2", "#F2C0A0"])
+        #expect(sky.palette.darkGlass.hex == "#10141F9E")
+    }
+
     @Test func phasesMaySkip() throws {
         // Only night and day: the blend spans the whole range.
         let night = Scene(gradient: [GradientStop(color: RGBA(red: 0, green: 0, blue: 0.1), location: 0), GradientStop(color: RGBA(red: 0, green: 0, blue: 0.2), location: 1)], layers: [SceneLayer(kind: .stars)])
