@@ -185,12 +185,19 @@ struct NodeContext {
     }
 }
 
+@MainActor
 enum Timing {
     /// Loops start at the scene clock's epoch, so a frozen clock (`timeOffset`) shows the same
     /// frame every time: stills are deterministic.
     static let epoch: CFTimeInterval = 1e-6
 
-    static func loop<Animation: CAAnimation>(_ animation: Animation, duration: CFTimeInterval, phase: Double = 0, autoreverses: Bool = false) -> Animation {
+    /// Ambient loops ask for at most 30 frames a second: slow drifts look the same, and the
+    /// window server composites half the frames on a 60 Hz display (a quarter on ProMotion).
+    /// Fast ones (a shooting star's streak) keep the display's rate.
+    static var ambientFrameRate = CAFrameRateRange(minimum: 15, maximum: 30, preferred: 30)
+
+    static func loop<Animation: CAAnimation>(_ animation: Animation, duration: CFTimeInterval, phase: Double = 0, autoreverses: Bool = false, fast: Bool = false) -> Animation {
+        if !fast { animation.preferredFrameRateRange = ambientFrameRate }
         animation.duration = duration
         animation.repeatCount = .infinity
         animation.autoreverses = autoreverses

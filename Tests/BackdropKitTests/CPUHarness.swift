@@ -16,6 +16,9 @@ import ThemeKit
     nonisolated static let seconds = ProcessInfo.processInfo.environment["BACKDROP_CPU_SECONDS"].flatMap(Double.init)
     nonisolated static let report = ProcessInfo.processInfo.environment["BACKDROP_CPU_REPORT"]
     nonisolated static let only = ProcessInfo.processInfo.environment["BACKDROP_CPU_ONLY"]
+    /// `BACKDROP_CPU_AB=1`: alternate the 30 fps cap off and on for each scene (2 rounds) and
+    /// compare WindowServer's share.
+    nonisolated static let abTest = ProcessInfo.processInfo.environment["BACKDROP_CPU_AB"] == "1"
 
     static func processCPU() -> Double {
         var usage = rusage()
@@ -51,6 +54,12 @@ import ThemeKit
         return String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).split(separator: "\n").first.map(String.init)
     }
 
+    /// `BACKDROP_CPU_ONLY` is a comma-separated list of name fragments.
+    static func matches(_ name: String) -> Bool {
+        guard let only else { return true }
+        return only.split(separator: ",").contains { name.contains($0) }
+    }
+
     static func pump(_ seconds: TimeInterval) {
         let end = Date().addingTimeInterval(seconds)
         while Date() < end { RunLoop.main.run(until: min(end, Date().addingTimeInterval(0.25))) }
@@ -58,9 +67,10 @@ import ThemeKit
 
     static var scenes: [(name: String, scene: Scene?)] {
         var list: [(String, Scene?)] = [("baseline: gradient only", SampleScenes.single(SampleScenes.night, ""))]
-        list += SampleScenes.perKind.map { ("kind: \($0.name)", $0.scene) }
+        // Earth and the retro sun are the moon and sun renderers with other art.
+        list += SampleScenes.perKind.filter { !["moon-earth", "sun-retro"].contains($0.name) }.map { ("kind: \($0.name)", $0.scene) }
         list += SampleScenes.combos.map { ("combo: \($0.name)", $0.scene) }
-        for id in ["mothership-sky", "aurora", "nebula", "synthwave", "monsoon", "sakura", "firefly-forest", "ember", "deep-sea", "first-snow", "digital-rain"] {
+        for id in ["mothership-sky", "aurora", "synthwave", "monsoon", "sakura", "ember", "first-snow"] {
             guard let theme = ThemeLibrary.theme(id: id) else { continue }
             list.append(("built-in: \(id)", ThemeLibrary.scene(for: theme, sunAltitude: id == "mothership-sky" ? -20 : 30)))
         }
@@ -69,20 +79,59 @@ import ThemeKit
 
     @Test(.enabled(if: seconds != nil)) func measure() throws {
         let seconds = try #require(Self.seconds)
+        // Out of the user's way: a small borderless window in the bottom-right corner, never
+        // activating the process (Core Animation only runs for windows on screen, so it can't
+        // be offscreen), shown only while measuring.
         NSApplication.shared.setActivationPolicy(.accessory)
-        let frame = NSRect(x: 0, y: 0, width: 1200, height: 750)
-        let window = NSWindow(contentRect: frame, styleMask: [.titled], backing: .buffered, defer: false)
-        window.title = "BackdropKit CPU harness"
+        let frame = NSRect(x: 0, y: 0, width: 480, height: 300)
+        let window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.ignoresMouseEvents = true
+        window.hasShadow = false
         if let screen = NSScreen.main?.visibleFrame {
-            window.setFrameOrigin(NSPoint(x: screen.maxX - window.frame.width - 20, y: screen.minY + 20))
+            window.setFrameOrigin(NSPoint(x: screen.maxX - frame.width - 8, y: screen.minY + 8))
         }
         let view = BackdropView(frame: frame)
         window.contentView = view
         window.orderFrontRegardless()
-        defer { window.orderOut(nil) }
+        defer {
+            view.apply(nil, transition: 0)
+            window.orderOut(nil)
+            window.close()
+        }
         let windowServer = Self.windowServerPID()
         var lines = ["scene\tapp CPU %\tWindowServer CPU %\tlayers\tvisible"]
-        for (name, scene) in Self.scenes where Self.only.map({ name.contains($0) }) ?? true {
+        if Self.abTest {
+            lines = ["scene\tcap\tWindowServer CPU % (2 rounds)\tapp CPU %"]
+            for (name, scene) in Self.scenes where Self.matches(name) {
+                var results: [Bool: [Double]] = [:], app: [Bool: [Double]] = [:]
+                for _ in 0 ..< 2 {
+                    for capped in [false, true] {
+                        Timing.ambientFrameRate = capped ? CAFrameRateRange(minimum: 15, maximum: 30, preferred: 30) : .default
+                        view.apply(nil, transition: 0)
+                        view.apply(scene, transition: 0)
+                        Self.pump(3)
+                        let cpu = Self.processCPU(), server = windowServer.flatMap(Self.psCPU), start = Date()
+                        Self.pump(seconds)
+                        let elapsed = Date().timeIntervalSince(start)
+                        app[capped, default: []].append((Self.processCPU() - cpu) / elapsed * 100)
+                        if let server, let pid = windowServer, let after = Self.psCPU(pid) {
+                            results[capped, default: []].append((after - server) / elapsed * 100)
+                        }
+                    }
+                }
+                for capped in [false, true] {
+                    let line = [name, capped ? "30 fps" : "display", (results[capped] ?? []).map { String(format: "%.1f", $0) }.joined(separator: " / "),
+                                (app[capped] ?? []).map { String(format: "%.2f", $0) }.joined(separator: " / ")].joined(separator: "\t")
+                    print(line)
+                    lines.append(line)
+                }
+            }
+            Timing.ambientFrameRate = CAFrameRateRange(minimum: 15, maximum: 30, preferred: 30)
+            if let report = Self.report { try lines.joined(separator: "\n").appending("\n").write(toFile: report, atomically: true, encoding: .utf8) }
+            return
+        }
+        for (name, scene) in Self.scenes where Self.matches(name) {
             view.apply(scene, transition: 0)
             Self.pump(4)
             let cpu = Self.processCPU(), server = windowServer.flatMap(Self.psCPU), start = Date()

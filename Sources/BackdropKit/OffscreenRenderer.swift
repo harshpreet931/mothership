@@ -11,14 +11,36 @@ enum OffscreenRenderer {
     /// aurora mid-ripple and clouds well spread.
     static let stillTime: CFTimeInterval = 47.3
 
+    private struct StillKey: Hashable {
+        var scene: Scene
+        var width: CGFloat, height: CGFloat, scale: CGFloat, topBand: CGFloat
+    }
+
+    /// Recent stills: a gallery asks for the same cards again on every redraw.
+    private static var stills: [StillKey: CGImage] = [:]
+    private static var stillOrder: [StillKey] = []
+
     static func still(of scene: Scene, size: CGSize, scale: CGFloat, topBand: CGFloat = 0) -> CGImage? {
         guard size.width >= 1, size.height >= 1, scale > 0 else { return nil }
+        let key = StillKey(scene: scene, width: size.width, height: size.height, scale: scale, topBand: topBand)
+        if let cached = stills[key] { return cached }
         let stage = Stage(purpose: .thumbnail)
         stage.layout(size: size, scale: scale, topBand: topBand)
         stage.freeze(at: stillTime)
         stage.apply(scene, transition: 0)
-        return render(stage.root, size: size, scale: scale)
+        guard let image = render(stage.root, size: size, scale: scale) else { return nil }
+        stills[key] = image
+        stillOrder.append(key)
+        if stillOrder.count > 48 { stills[stillOrder.removeFirst()] = nil }
+        return image
     }
+
+    /// One Metal device and queue for every render (making them per thumbnail costs more
+    /// than the render).
+    private static let metal: (device: MTLDevice, queue: MTLCommandQueue)? = {
+        guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue() else { return nil }
+        return (device, queue)
+    }()
 
     /// One frame of `layer` (a tree root, not in a window) at `time`.
     static func render(_ layer: CALayer, size: CGSize, scale: CGFloat, time: CFTimeInterval = CACurrentMediaTime()) -> CGImage? {
@@ -29,6 +51,7 @@ enum OffscreenRenderer {
     }
 
     /// A renderer bound to one layer tree: render repeatedly to let emitters run in real time.
+    @MainActor
     final class Target {
         let device: MTLDevice
         let queue: MTLCommandQueue
@@ -40,8 +63,7 @@ enum OffscreenRenderer {
 
         init?(size: CGSize, scale: CGFloat) {
             let width = Int((size.width * scale).rounded()), height = Int((size.height * scale).rounded())
-            guard width > 0, height > 0, width <= 16384, height <= 16384,
-                  let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue() else { return nil }
+            guard width > 0, height > 0, width <= 16384, height <= 16384, let (device, queue) = OffscreenRenderer.metal else { return nil }
             let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
             descriptor.usage = [.renderTarget, .shaderRead]
             descriptor.storageMode = .shared

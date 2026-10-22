@@ -267,7 +267,7 @@ final class ShootingStarsNode: Node {
         for animation in [move, turn, fade] { animation.keyTimes = keyTimes }
         let group = CAAnimationGroup()
         group.animations = [move, turn, fade]
-        meteor.add(Timing.loop(group, duration: loop), forKey: "streaks")
+        meteor.add(Timing.loop(group, duration: loop, fast: true), forKey: "streaks")
     }
 
     override func setMotion(_ motion: Motion) {
