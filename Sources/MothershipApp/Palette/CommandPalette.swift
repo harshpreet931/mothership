@@ -305,6 +305,20 @@ struct CommandPaletteView: View {
                 ]
             ))
         }
+        // Themes: switch instantly, or step to the next.
+        items.append(PaletteItem(
+            id: "theme:next", section: .actions, title: "Next Theme",
+            subtitle: "After \(model.chosenTheme.name)", icon: .symbol("paintpalette"),
+            perform: { [model] in model.applyNextTheme(undoManager: NSApp.mainWindow?.undoManager) }
+        ))
+        for theme in model.themes {
+            let id = theme.id
+            items.append(PaletteItem(
+                id: "theme:\(id)", section: .actions, title: "Theme: " + theme.name, subtitle: theme.summary,
+                icon: .symbol(model.themeID == id ? "checkmark.circle" : "circle.lefthalf.filled"),
+                perform: { [model] in model.applyTheme(id, undoManager: NSApp.mainWindow?.undoManager) }
+            ))
+        }
         for task in model.tasks {
             let id = task.id
             let repo = (task.repoRoot as NSString).lastPathComponent
