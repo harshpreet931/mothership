@@ -23,6 +23,17 @@ public final class BackdropView: NSView {
         didSet { if reducesMotion != oldValue { updateMotion() } }
     }
 
+    /// How much the scene moves. The app maps Settings → Appearance → Motion (and battery /
+    /// Low Power) onto this; `.subtle` trades frame rate and particle counts for a much lower
+    /// window-server compositing cost.
+    public enum MotionLevel: String, Sendable, CaseIterable {
+        case full, subtle, still
+    }
+
+    public var motionLevel: MotionLevel = .full {
+        didSet { if motionLevel != oldValue { updateMotion() } }
+    }
+
     /// The scene on screen (nil: nothing, the desktop shows through).
     public private(set) var scene: Scene?
 
@@ -74,7 +85,8 @@ public final class BackdropView: NSView {
     }
 
     private func updateMotion() {
-        stage.setMotion(reducesMotion ? .still : isAnimating ? .running : .paused)
+        // `.subtle` runs like `.full` until the renderer gives it its own budget.
+        stage.setMotion(reducesMotion || motionLevel == .still ? .still : isAnimating ? .running : .paused)
     }
 
     /// Layers in the tree right now (sky, nodes and masks), for budgets and diagnostics.
