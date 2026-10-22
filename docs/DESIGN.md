@@ -149,7 +149,7 @@ Per tone:
 ## 5. Layout
 
 ```
-╭──────────────────────────────── sky (MeshGradient) ─────────────────────────────────╮
+╭──────────────────────────────── sky (BackdropView) ─────────────────────────────────╮
 │ ● ● ●  (⌂) (◫)            ╭ Workspaces ┃ Fleet ╮                   ( ⌕ Search ⌘K ) │  floating, no bar
 │ ╭─────────────────╮  ╭──────────────────────────────╮ ╭───────────────────────────╮ │
 │ │ ▌mothership  ✳● │  │                              │ │                           │ │
@@ -302,7 +302,7 @@ ship trademarked artwork beyond simple marks. State overlays:
 
 The backdrop and the chrome's palette come from a **theme** (ThemeKit; authoring guide in
 `docs/themes.md`). **Mothership Sky** is the default: the living sky that follows the real sun
-from starry night through golden hour to day. Mothership draws it natively (§4a, `SunModel`).
+from starry night through golden hour to day (the sun's position comes from `SunModel`).
 There are 18 more built-ins (Midnight, Aurora, Nebula, Deep Sea, Sakura, Ember, Monsoon,
 First Snow, Dune, Firefly Forest, Synthwave, Digital Rain, Mars, Lunar, Golden Hour,
 Graphite, Paper, Desktop), plus the user's own JSON files in `themes/` in the support folder,
@@ -311,9 +311,11 @@ hot-reloaded.
 A theme sets:
 - **Backdrop:** `fixed` (one scene), `sunCycle` (scenes per sun phase, blended continuously
   by altitude) or `desktop` (behind-window blur of the wallpaper). Scenes are gradients,
-  glows and layers (stars, moon, clouds, aurora, particles, a retro grid…), all drawn by Core
-  Animation. Animation rests while the window is hidden, on Low Power, with Reduce Motion,
-  or with "Animate sky" off.
+  glows and layers (stars, moon, clouds, aurora, particles, a retro grid…), drawn by
+  BackdropKit's `BackdropView` with Core Animation (the window server does the work). The
+  scene is recomputed from the sun every minute and cross-fades over 1.5 s; a theme change
+  does too. A gallery hover cross-fades in 0.6 s. The top bar's 52 pt band always shows sky,
+  and some stars and the moon sit in it.
 - **Tone:** `auto` is the content-led rule (§4a): the chrome follows the terminal. `light` and
   `dark` force it.
 - **Palette:** light and dark glass tints, an optional selection fill, and **attention** and
@@ -322,6 +324,17 @@ A theme sets:
 - **Terminal pairing:** suggested Ghostty dark and light themes. "Use the theme's terminal
   colors" applies them (off by default when the user's Ghostty config sets a theme); turning
   it off restores the user's own.
+
+**Motion** (Settings → Appearance → Motion: Full, **Subtle** by default, Off). The sky is
+decoration, so it gives way:
+- On battery it drops one level (Full → Subtle, Subtle → still). In Low Power Mode it holds
+  still.
+- After two minutes with Mothership in the background it holds still until it's active
+  again.
+- While the window is occluded, minimized or hidden, nothing animates.
+- Reduce Motion shows a still frame.
+- A gallery hover previews at full motion, only while hovering (not when Motion is Off or in
+  Low Power Mode).
 
 How themes are chosen:
 - **Settings → Appearance → Themes** is a gallery: a still of each scene, a mock of its glass
