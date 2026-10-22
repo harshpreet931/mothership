@@ -33,8 +33,8 @@ struct HomeView: View {
                                     .font(.system(size: 14))
                                     .foregroundStyle(Sky.secondary)
                             }
-                            .onSkyText()
                         }
+                        .onSkyText()
                         .padding(.top, 28)
                         if model.needsOnboarding {
                             OnboardingCard(model: model)

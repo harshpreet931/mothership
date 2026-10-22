@@ -183,6 +183,7 @@ final class RootView: NSView {
         skyView.animationEnabled = model.skyClock.animates
         desktopBlur.isHidden = sky.kind != .desktop
         syncTerminalScheme()
+        if SkyContext.shared.skyIsDark != sky.isDark { SkyContext.shared.skyIsDark = sky.isDark }
         // Content-led tone: the chrome takes the terminal's light or dark, not the sky's.
         onSkyChange?(model.chromeIsDark, sky.kind == .desktop)
 

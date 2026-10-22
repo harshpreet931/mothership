@@ -9,11 +9,15 @@ struct GlassBackground<S: InsettableShape>: ViewModifier {
     var dense = false
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.colorScheme) private var scheme
 
     func body(content: Content) -> some View {
         content.background {
             ZStack {
                 let tint = dense ? Sky.glassDense : Sky.glassFill
+                // Light glass over a dark sky (a light terminal at night) would read as grey;
+                // it gets more white so it stays glass.
+                let lift = scheme == .light && SkyContext.shared.skyIsDark
                 if reduceTransparency {
                     shape.fill(Color(nsColor: .skySolidPanel))
                 } else {
@@ -25,6 +29,7 @@ struct GlassBackground<S: InsettableShape>: ViewModifier {
                         shape.fill(.ultraThinMaterial)
                         shape.fill(tint.opacity(0.75))
                     }
+                    if lift { shape.fill(Color.white.opacity(0.28)) }
                     // Top inner hairline: light catching the edge of the glass.
                     shape.strokeBorder(
                         LinearGradient(colors: [Sky.glassHighlight, Sky.glassHighlight.opacity(0)], startPoint: .top, endPoint: .init(x: 0.5, y: 0.35)),
@@ -282,6 +287,16 @@ extension View {
     func onSkyText() -> some View {
         modifier(OnSkyText())
     }
+}
+
+/// The sky's light or dark for chrome that needs it (glass over a mismatched sky). Set by
+/// the root view as the sun moves.
+@MainActor
+@Observable
+final class SkyContext {
+    static let shared = SkyContext()
+    var skyIsDark = true
+    private init() {}
 }
 
 /// The selection surface for rows and chips: a white card lifted by a soft shadow in light
