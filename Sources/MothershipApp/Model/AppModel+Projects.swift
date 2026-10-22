@@ -175,7 +175,8 @@ extension AppModel {
         alert.addButton(withTitle: "Quit")
         alert.addButton(withTitle: "Cancel")
         alert.buttons.last?.keyEquivalent = "\u{1b}"
-        NSApp.activate()
+        // Test launches never steal focus (a stray keystroke could answer the alert).
+        if !DebugSnapshot.isUnobtrusive { NSApp.activate() }
         // QA: MOTHERSHIP_DEBUG_QUIT_ANSWER=cancel|quit clicks that real button once the alert is up.
         if let answer = ProcessInfo.processInfo.environment["MOTHERSHIP_DEBUG_QUIT_ANSWER"] {
             let button = answer == "quit" ? alert.buttons.first : alert.buttons.last

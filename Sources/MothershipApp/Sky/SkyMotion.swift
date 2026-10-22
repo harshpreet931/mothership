@@ -28,15 +28,15 @@ enum SkyMotion: String, CaseIterable, Sendable {
 enum MotionPolicy {
     /// - Off, Low Power Mode, or two minutes with Mothership in the background: still.
     /// - A theme gallery hover: full, so the preview shows the theme as it really moves.
-    /// - On battery: one level down (Full → Subtle, Subtle → still).
+    /// - On battery: Full eases to Subtle; Subtle (the default, already cheap) keeps moving,
+    ///   so a laptop never shows a frozen sky out of the box.
     /// Hidden, minimized and occluded windows stop entirely (`SkyBackdropView`), and
     /// Reduce Motion shows a still frame whatever this says.
     static func level(setting: SkyMotion, onBattery: Bool, lowPower: Bool, idle: Bool, previewing: Bool) -> BackdropView.MotionLevel {
         if setting == .off || lowPower || idle { return .still }
         if previewing { return .full }
         let chosen: BackdropView.MotionLevel = setting == .full ? .full : .subtle
-        guard onBattery else { return chosen }
-        return chosen == .full ? .subtle : .still
+        return onBattery ? .subtle : chosen
     }
 
     /// Why the sky moves less than the setting asks right now, for Settings (nil: it doesn't).
@@ -45,7 +45,7 @@ enum MotionPolicy {
         guard setting != .off else { return nil }
         if SkyAccessibility.reduceMotion { return "Still now: Reduce Motion is on" }
         if conditions.lowPower { return "Still now: Low Power Mode is on" }
-        if conditions.onBattery { return setting == .full ? "Subtle now: on battery" : "Still now: on battery" }
+        if conditions.onBattery, setting == .full { return "Subtle now: on battery" }
         return nil
     }
 }

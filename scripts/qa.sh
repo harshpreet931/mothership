@@ -56,6 +56,7 @@ ms() { qa_env "$MSHIP" "$@"; }
 start_app() {
     env -u MOTHERSHIP_SOCKET -u MOTHERSHIP_SURFACE_ID -u MOTHERSHIP_WORKSPACE_ID \
         MOTHERSHIP_HOME="$HOME_DIR" ZDOTDIR="$ZDOT" NO_COLOR=1 MOTHERSHIP_KEEP_SESSIONS="${QA_KEEP:-1}" \
+        MOTHERSHIP_TEST_WINDOW=corner MOTHERSHIP_DEBUG_QUIT_ANSWER="${QA_QUIT_ANSWER:-cancel}" \
         "$BIN" >>"$LOG" 2>&1 &
     echo $! > "$PIDFILE"
     disown "$!" 2>/dev/null || true
