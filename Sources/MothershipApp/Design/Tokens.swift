@@ -42,23 +42,25 @@ enum Sky {
     /// measured ~4.4 and ~2.3–3:1).
     static let secondary = Color(nsColor: .skySecondary)
     static let tertiary = Color(nsColor: .skyTertiary)
-    static let glassFill = Color(nsColor: .skyGlassFill)
+    /// The active theme's glass tint (light or dark by tone).
+    @MainActor static var glassFill: Color { Color(nsColor: ThemeChrome.shared.glass) }
     /// Glass over busy content (terminal text): the §9 scrim, folded into the tint.
-    static let glassDense = Color(nsColor: .skyGlassDense)
+    @MainActor static var glassDense: Color { Color(nsColor: ThemeChrome.shared.glassDense) }
     static let glassHighlight = Color(nsColor: .skyGlassHighlight)
     static let bubble = Color(nsColor: .skyBubble)
     static let bubbleUser = Color(nsColor: .skyBubbleUser)
     static let pillSecondary = Color(nsColor: .skyPillSecondary)
-    static let attention = Color(nsColor: .skyAttention)
-    static let attentionSoft = Color(nsColor: .skyAttentionSoft)
-    static let danger = Color(nsColor: .skyDanger)
+    /// "Needs you" and errors, from the active theme's palette.
+    @MainActor static var attention: Color { Color(nsColor: ThemeChrome.shared.attention) }
+    @MainActor static var attentionSoft: Color { Color(nsColor: ThemeChrome.shared.attentionSoft) }
+    @MainActor static var danger: Color { Color(nsColor: ThemeChrome.shared.danger) }
     /// Hairlines inside glass lists.
     static let hairline = Color(nsColor: .skyInk.withAlphaComponent(0.08))
     /// Recessed chip behind inline code.
     static let recess = Color(nsColor: .skyRecess)
     /// Selection (sidebar rows, palette rows, file lists, chips): a white elevated card in
     /// light tone (Hark's bubble), frosted white 16 % with a 20 % hairline in dark tone.
-    static let selection = Color(nsColor: .skySelection)
+    @MainActor static var selection: Color { Color(nsColor: ThemeChrome.shared.selection ?? .skySelection) }
     /// Hairline around opaque cards floating over the sky (toasts).
     static let cardStroke = Color(nsColor: .skyCardStroke)
     static let selectionStroke = Color(nsColor: .skySelectionStroke)
@@ -103,17 +105,13 @@ extension NSColor {
 
     static let skyInk = dynamic(light: rgb(0x0D0E11), dark: rgb(0xF4F5F7))
     static let skyOnInk = dynamic(light: rgb(0xFFFFFF), dark: rgb(0x0D0E11))
-    // Dark glass is a deep ink-navy at ~60 %: over a bright day sky it reads as tinted
-    // cockpit glass, not grey; at night it disappears into the sky.
-    static let skyGlassFill = dynamic(light: rgb(0xFFFFFF, 0.55), dark: rgb(0x10141F, 0.62))
-    static let skyGlassDense = dynamic(light: rgb(0xF7F9FC, 0.9), dark: rgb(0x16181E, 0.9))
+
     static let skyGlassHighlight = dynamic(light: rgb(0xFFFFFF, 0.70), dark: rgb(0xFFFFFF, 0.08))
     static let skyBubble = dynamic(light: rgb(0xFFFFFF), dark: rgb(0x1D1F25))
     static let skyBubbleUser = dynamic(light: rgb(0xFFFFFF, 0.40), dark: rgb(0xFFFFFF, 0.10))
     static let skyPillSecondary = dynamic(light: rgb(0xFFFFFF), dark: rgb(0xFFFFFF, 0.12))
-    static let skyAttention = dynamic(light: rgb(0xFF7A1A), dark: rgb(0xFF8A33))
-    static let skyAttentionSoft = dynamic(light: rgb(0xFF7A1A, 0.14), dark: rgb(0xFF8A33, 0.18))
-    static let skyDanger = dynamic(light: rgb(0xE5484D), dark: rgb(0xF2555A))
+    /// The active theme's attention color (amber by default), for layers.
+    @MainActor static var skyAttention: NSColor { ThemeChrome.shared.attention }
     static let skyRecess = dynamic(light: rgb(0x0D0E11, 0.05), dark: rgb(0x000000, 0.28))
     static let skySecondary = dynamic(light: rgb(0x0D0E11, 0.68), dark: rgb(0xF4F5F7, 0.64))
     static let skyTertiary = dynamic(light: rgb(0x0D0E11, 0.58), dark: rgb(0xF4F5F7, 0.48))
