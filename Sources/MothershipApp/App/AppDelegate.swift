@@ -39,6 +39,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_: Notification) {
+        // Snapshot and test launches never take over the screen (see DebugSnapshot.tuck).
+        if DebugSnapshot.isUnobtrusive { NSApp.setActivationPolicy(.accessory) }
         PreferenceKey.registerDefaults()
         // Debug aid for snapshots: force light or dark regardless of the system setting.
         switch environment["MOTHERSHIP_APPEARANCE"] {
@@ -89,8 +91,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             model.createWorkspace(cwd: FileManager.default.homeDirectoryForCurrentUser.path)
         }
 
-        windowController.showWindow(nil)
-        windowController.window?.makeKeyAndOrderFront(nil)
+        if DebugSnapshot.isUnobtrusive, let window = windowController.window {
+            DebugSnapshot.tuck(window)
+        } else {
+            windowController.showWindow(nil)
+            windowController.window?.makeKeyAndOrderFront(nil)
+        }
         model.start()
         services.start()
         // Tasks (worktrees, diffs) and PR status. Demo mode and MOTHERSHIP_GH=none keep gh off.
@@ -101,7 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // QA (scratch homes): a scripted task run, see DebugTaskScript.
             if let script = environment["MOTHERSHIP_DEBUG_TASK"] { model.runDebugTaskScript(script) }
         }
-        NSApp.activate()
+        if !DebugSnapshot.isUnobtrusive { NSApp.activate() }
 
         if isDemo {
             model.portsProvider = { DemoAgentEngine.demoPorts }

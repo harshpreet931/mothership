@@ -136,6 +136,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, AppWindo
 /// Keeps ⌘-shortcuts working while a SwiftUI text field (palette, composer, rename) is
 /// focused, and floats the window buttons in the 52 pt top bar.
 final class MainWindow: NSWindow {
+    /// Snapshot and test launches keep the window tucked mostly off screen
+    /// (`DebugSnapshot.tuck`), which AppKit would otherwise pull back into view.
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        DebugSnapshot.isUnobtrusive ? frameRect : super.constrainFrameRect(frameRect, to: screen)
+    }
+
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if event.modifierFlags.contains(.command), let menu = NSApp.mainMenu, menu.performKeyEquivalent(with: event) {
             return true

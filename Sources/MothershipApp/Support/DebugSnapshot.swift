@@ -16,13 +16,35 @@ final class SnapshotMode {
 /// `MOTHERSHIP_SNAPSHOT=/path.png`: a PNG of the main window shortly after launch, for
 /// verifying UI without screen-recording permission.
 ///
-/// `cacheDisplay` can't see the Metal sky, Metal-presented terminal frames, materials or
-/// layer shadows, so the image is composited layer by layer: the sky (rendered with
-/// `ImageRenderer`), the pane canvas with each terminal's IOSurface frame and the attention
-/// halos, then every SwiftUI chrome layer in z-order. Glass shows its tint without blur,
-/// which over a soft sky is a faithful stand-in.
+/// `cacheDisplay` can't see the sky's Core Animation scene, Metal-presented terminal frames,
+/// materials or layer shadows, so the image is composited layer by layer: the sky
+/// (BackdropKit's still of the current scene), the pane canvas with each terminal's
+/// IOSurface frame and the attention halos, then every SwiftUI chrome layer in z-order.
+/// Glass shows its tint without blur, which over a soft sky is a faithful stand-in.
+///
+/// The window stays out of the user's way while it renders: tucked into the bottom-right
+/// corner with only a sliver on screen, never activating the app or taking clicks (also
+/// `MOTHERSHIP_TEST_WINDOW=corner`, for other test launches).
 @MainActor
 enum DebugSnapshot {
+    /// Snapshot and test launches: no Dock icon, no activation, no key window.
+    static var isUnobtrusive: Bool {
+        let environment = ProcessInfo.processInfo.environment
+        return environment["MOTHERSHIP_SNAPSHOT"]?.isEmpty == false || environment["MOTHERSHIP_TEST_WINDOW"] == "corner"
+    }
+
+    /// Shows `window` (full size, so snapshots keep their layout) almost entirely off the
+    /// bottom-right of the screen: a 200 × 120 pt sliver of its top-left corner shows.
+    static func tuck(_ window: NSWindow) {
+        window.ignoresMouseEvents = true
+        window.hasShadow = false
+        if let screen = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame {
+            window.setFrameOrigin(NSPoint(x: screen.maxX - 200, y: screen.minY + 120 - window.frame.height))
+        }
+        window.orderFrontRegardless()
+        NSLog("Mothership: test window tucked at %@", NSStringFromRect(window.frame))
+    }
+
     /// `MOTHERSHIP_SNAPSHOT_VIEW`: home | fleet | palette | toasts[:open] |
     /// settings[:agents|appearance|notifications|keys].
     static func prepareView(_ view: String?, model: AppModel, root: RootView) {
