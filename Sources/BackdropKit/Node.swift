@@ -12,6 +12,7 @@ class Node {
     /// layer is the same across launches and renders.
     let seed: UInt64
     private(set) var context: NodeContext?
+    private var isBuilt = false
 
     required init(spec: SceneLayer, seed: UInt64) {
         self.spec = spec
@@ -31,8 +32,11 @@ class Node {
         self.context = context
         layer.frame = CGRect(origin: .zero, size: context.size)
         guard !context.isEmpty else { return }
-        if previous == nil { build(context) }
-        if previous?.size != context.size || previous?.topBand != context.topBand || previous == nil {
+        if !isBuilt {
+            isBuilt = true
+            build(context)
+        }
+        if previous?.size != context.size || previous?.topBand != context.topBand {
             relayout(context)
         }
         if previous?.scale != context.scale { setScale(context.scale) }
@@ -42,10 +46,10 @@ class Node {
     func build(_: NodeContext) {}
     /// Positions everything for the context's size; called on every size change.
     func relayout(_: NodeContext) {}
-    func setScale(_ scale: CGFloat) {
-        for sublayer in layer.sublayers ?? [] { sublayer.contentsScale = scale }
-    }
+    func setScale(_: CGFloat) {}
     func setMotion(_: Motion) {}
+    /// The scene's gradient, for nodes that paint part of the sky themselves (the grid's floor).
+    func sceneGradient(_: [GradientStop], duration _: TimeInterval) {}
 
     /// Applies `spec` without rebuilding when only cheap fields changed (in place, so live
     /// particles keep falling). Return false to have the stage cross-fade a fresh node.
@@ -79,13 +83,13 @@ class Node {
 // MARK: - Stars
 
 /// A fixed field in three brightness tiers (three shape layers), plus twinklers that
-/// breathe on their own 2.5–6 s cycles. `density` scales both counts, `size` the radii,
-/// `speed` the twinkle, `colors` tint the tiers and twinklers in turn.
+/// breathe on their own cycles. `density` scales both counts, `size` the radii, `speed` the
+/// twinkle (0: none, stars hold still), `colors` tint the tiers and twinklers in turn.
 final class StarsNode: Node {
     private let tiers = (0 ..< 3).map { _ in CAShapeLayer() }
     private var twinklers: [CALayer] = []
 
-    private struct Twinkle { var x: Double, y: Double, size: Double, peak: Double, duration: Double, phase: Double, inTopBand: Bool }
+    private var twinkles: Bool { spec.speed.map { $0 > 0.001 } ?? true }
 
     override func build(_: NodeContext) {
         let colors = spec.palette([.white])
@@ -99,11 +103,7 @@ final class StarsNode: Node {
         twinklers = (0 ..< count).map { index in
             let twinkler = CALayer()
             let color = colors[(index + 1) % colors.count]
-            twinkler.contents = Artwork.softDot
-            if color != .white {
-                // Tint by the color filter-free way: a colored soft dot drawn once.
-                twinkler.contents = TintedDot.image(color)
-            }
+            twinkler.contents = color == .white ? Artwork.softDot : TintedDot.image(color)
             layer.addSublayer(twinkler)
             return twinkler
         }
@@ -129,23 +129,30 @@ final class StarsNode: Node {
         }
         var twinkleRandom = SplitMix(seed: seed ^ 0x7317)
         let band = Double(context.topBand)
+        // Speed 0.3 (the catalog's usual) twinkles at the original sky's 2.5–6 s.
+        let pace = Relative.factor(spec.speed, range: 4) / Relative.factor(0.3, range: 4)
         for (index, twinkler) in twinklers.enumerated() {
-            let spec = Twinkle(
-                x: twinkleRandom.range(0.02, 0.98), y: twinkleRandom.unit(), size: twinkleRandom.range(4, 7.5) * self.spec.sizeFactor,
-                peak: twinkleRandom.range(0.55, 1), duration: twinkleRandom.range(2.5, 6) / self.spec.speedFactor,
-                phase: twinkleRandom.unit(), inTopBand: band > 0 && index % 3 == 0
-            )
-            // A third sit in the chrome's top band, where the sky always shows.
-            let y = spec.inTopBand ? 8 + spec.y * max(band - 16, 1) : band + spec.y * (Double(size.height) - band) * 0.72
-            twinkler.bounds = CGRect(x: 0, y: 0, width: spec.size, height: spec.size)
-            twinkler.position = context.point(x: spec.x * size.width, fromTop: y)
-            twinkler.opacity = Float(spec.peak)
+            let x = twinkleRandom.range(0.02, 0.98), unitY = twinkleRandom.unit()
+            let side = twinkleRandom.range(4, 7.5) * spec.sizeFactor
+            let peak = twinkleRandom.range(0.55, 1)
+            let duration = twinkleRandom.range(2.5, 6) / pace
+            let phase = twinkleRandom.unit()
+            // With a chrome band, a third sit in it, where the sky always shows.
+            let inBand = band > 0 && index % 3 == 0
+            let y = inBand ? 8 + unitY * max(band - 16, 1) : band + unitY * (Double(size.height) - band) * 0.72
+            twinkler.bounds = CGRect(x: 0, y: 0, width: side, height: side)
+            twinkler.position = context.point(x: x * size.width, fromTop: y)
             twinkler.removeAnimation(forKey: "twinkle")
+            guard twinkles else {
+                twinkler.opacity = Float(peak * 0.7)
+                continue
+            }
+            twinkler.opacity = Float(peak)
             let twinkle = CABasicAnimation(keyPath: "opacity")
-            twinkle.fromValue = spec.peak * 0.12
-            twinkle.toValue = spec.peak
+            twinkle.fromValue = peak * 0.12
+            twinkle.toValue = peak
             twinkle.timingFunction = Timing.easeInOut
-            twinkler.add(Timing.loop(twinkle, duration: spec.duration, phase: spec.phase, autoreverses: true), forKey: "twinkle")
+            twinkler.add(Timing.loop(twinkle, duration: duration, phase: phase, autoreverses: true), forKey: "twinkle")
         }
     }
 
@@ -162,7 +169,7 @@ enum TintedDot {
     static func image(_ color: RGBA) -> CGImage? {
         if let image = cache[color.hex] { return image }
         guard let context = Artwork.bitmap(width: 32, height: 32) else { return nil }
-        Artwork.radial(context, center: CGPoint(x: 16, y: 16), radius: 16, color: color.mixed(with: .white, 0.35), alphas: [1, 0.55, 0.12, 0], locations: [0, 0.14, 0.42, 1])
+        Artwork.radial(context, center: CGPoint(x: 16, y: 16), radius: 16, color: color.lerp(.white, 0.35), alphas: [1, 0.55, 0.12, 0], locations: [0, 0.14, 0.42, 1])
         let image = context.makeImage()
         if cache.count > 64 { cache.removeAll() }
         cache[color.hex] = image
@@ -198,12 +205,12 @@ final class ShootingStarsNode: Node {
         let low = max(1, min(bounds[0], bounds[1])) / spec.densityFactor
         let high = max(low, max(bounds[0], bounds[1]) / spec.densityFactor)
         let duration = 0.8 / spec.speedFactor.squareRoot()
-        let travel = Double.random(in: 220 ... 320, using: &random) * spec.sizeFactor
         var time = random.range(0.15, 0.4) * low
         var result: [Streak] = []
         let size = context.size
         for _ in 0 ..< Self.streaks {
             let angle = random.range(0.38, 0.6)
+            let travel = random.range(220, 320) * spec.sizeFactor
             let rightward: Bool = switch spec.direction {
             case .some(let degrees) where sin(degrees * .pi / 180) > 0.3: true
             case .some(let degrees) where sin(degrees * .pi / 180) < -0.3: false
@@ -222,20 +229,23 @@ final class ShootingStarsNode: Node {
         meteor.bounds = CGRect(x: 0, y: 0, width: 150 * spec.sizeFactor, height: 1.4 * max(spec.sizeFactor, 0.7))
         meteor.cornerRadius = meteor.bounds.height / 2
         meteor.removeAllAnimations()
+        meteor.transform = CATransform3DIdentity
+        meteor.opacity = 0
         guard context.size.width > 200 else { return }
         let (streaks, loop, duration) = streaks(context)
-        if context.purpose == .thumbnail, let first = streaks.first {
+        guard let first = streaks.first else { return }
+        if context.purpose == .thumbnail {
             // A still shows one streak mid-flight, so the gallery says "shooting stars".
             meteor.position = CGPoint(x: first.start.x + (first.end.x - first.start.x) * 0.55, y: first.start.y + (first.end.y - first.start.y) * 0.55)
             meteor.transform = CATransform3DMakeRotation(first.angle, 0, 0, 1)
             meteor.opacity = 0.75
             return
         }
-        var times: [Double] = [0], positions: [CGPoint] = [streaks[0].start], angles: [Double] = [streaks[0].angle], alphas: [Double] = [0]
-        var timing: [CAMediaTimingFunction] = []
+        meteor.position = first.start
+        var times: [Double] = [0], positions: [CGPoint] = [first.start], angles: [Double] = [first.angle], alphas: [Double] = [0]
         for streak in streaks {
             let t = streak.at / loop, d = duration / loop
-            // Wait at the start (invisible), then streak with an ease-in.
+            // Invisible until its moment, then a streak with an ease-in.
             for (offset, progress, alpha) in [(0.0, 0.0, 0.0), (0.2, 0.04, 0.9), (0.7, 0.49, 0.7), (1.0, 1.0, 0.0)] {
                 times.append(t + d * offset)
                 positions.append(CGPoint(x: streak.start.x + (streak.end.x - streak.start.x) * progress, y: streak.start.y + (streak.end.y - streak.start.y) * progress))
@@ -247,19 +257,14 @@ final class ShootingStarsNode: Node {
         positions.append(positions[positions.count - 1])
         angles.append(angles[angles.count - 1])
         alphas.append(0)
-        timing = Array(repeating: Timing.linear, count: times.count - 1)
+        let keyTimes = times.map { NSNumber(value: $0) }
         let move = CAKeyframeAnimation(keyPath: "position")
         move.values = positions.map { NSValue(point: $0) }
         let turn = CAKeyframeAnimation(keyPath: "transform.rotation.z")
         turn.values = angles
-        turn.calculationMode = .discrete
         let fade = CAKeyframeAnimation(keyPath: "opacity")
         fade.values = alphas
-        for animation in [move, fade] {
-            animation.keyTimes = times.map { NSNumber(value: $0) }
-            animation.timingFunctions = timing
-        }
-        turn.keyTimes = times.map { NSNumber(value: $0) }
+        for animation in [move, turn, fade] { animation.keyTimes = keyTimes }
         let group = CAAnimationGroup()
         group.animations = [move, turn, fade]
         meteor.add(Timing.loop(group, duration: loop), forKey: "streaks")
@@ -269,23 +274,29 @@ final class ShootingStarsNode: Node {
         // Reduce Motion: no frozen streak hanging in the sky.
         meteor.isHidden = motion == .still && context?.purpose != .thumbnail
     }
+
+    override func setScale(_ scale: CGFloat) { meteor.contentsScale = scale }
 }
 
 // MARK: - Moon
 
-/// A soft moon with a wide glow at `position` (default: high, a little left of center).
-/// `colors[0]` lights the face, `colors[1]` the glow; `size` scales it.
+/// A soft moon at `position` (default high, a little left of center). `size` is its
+/// diameter with its glow, as a fraction of the window's shorter side (default 0.12; the
+/// disc is a fifth of that). One color tints it; several make it the Earth seen from the
+/// Moon: ocean, its shade, then land and cloud colors.
 final class MoonNode: Node {
     private let moon = CALayer()
 
+    private var isEarth: Bool { (spec.colors?.count ?? 0) >= 2 }
+
     override func build(_: NodeContext) {
-        let colors = spec.palette([RGBA(0xFFFDF4), RGBA(0xDDE4FF)])
-        moon.contents = Artwork.moon(disc: colors[0], glow: colors.count > 1 ? colors[1] : colors[0])
+        let colors = spec.palette([RGBA(0xFFFDF4)])
+        moon.contents = isEarth ? Artwork.earth(colors) : Artwork.moon(colors[0])
         layer.addSublayer(moon)
     }
 
     override func relayout(_ context: NodeContext) {
-        let side = 132 * spec.sizeFactor
+        let side = Double(min(context.size.width, context.size.height)) * (spec.size ?? 0.12)
         moon.bounds = CGRect(x: 0, y: 0, width: side, height: side)
         if let position = spec.position {
             moon.position = context.point(position)
@@ -301,29 +312,40 @@ final class MoonNode: Node {
 
 // MARK: - Sun
 
-/// A disc in a breathing glow at `position` (default upper right). `colors[0]` tints the
-/// disc, `colors[1]` the glow, so it can be a white noon sun, a red setting one or a blue
-/// Earth over the lunar horizon. `size` scales the disc (glow follows); `speed` the breath.
+/// A disc in a softly breathing glow at `position` (default upper right). `size` is the
+/// disc's diameter as a fraction of the window's shorter side (default 0.07). One or two
+/// colors: the disc, then the glow (a white noon sun, a red setting one, Mars's blue one).
+/// Three or more: a retro sun, a gradient through them from top to bottom with slits across
+/// its lower half (Synthwave). `speed` paces the breath.
 final class SunNode: Node {
     private let glow = CALayer()
     private let disc = CALayer()
 
+    private var isRetro: Bool { (spec.colors?.count ?? 0) >= 3 }
+
     override func build(_: NodeContext) {
         let colors = spec.palette([RGBA(0xFFF4DC), RGBA(0xFFB46A)])
-        disc.contents = Artwork.sunDisc(colors[0])
-        glow.contents = Artwork.sunGlow(colors.count > 1 ? colors[1] : colors[0])
+        if isRetro {
+            disc.contents = Artwork.retroSun(colors)
+            glow.contents = Artwork.sunGlow(colors[colors.count - 1].lerp(colors[colors.count / 2], 0.4))
+        } else {
+            disc.contents = Artwork.sunDisc(colors[0])
+            glow.contents = Artwork.sunGlow(colors.count > 1 ? colors[1] : colors[0])
+        }
         layer.addSublayer(glow)
         layer.addSublayer(disc)
     }
 
     override func relayout(_ context: NodeContext) {
-        let radius = 34 * spec.sizeFactor
+        let diameter = Double(min(context.size.width, context.size.height)) * (spec.size ?? 0.07)
         let center = context.point(spec.position ?? UnitPoint2(x: 0.76, y: 0.28))
-        disc.bounds = CGRect(x: 0, y: 0, width: radius * 2, height: radius * 2)
+        disc.bounds = CGRect(x: 0, y: 0, width: diameter, height: diameter)
         disc.position = center
-        let halo = radius * 9
+        // A retro sun is mostly disc; a real one mostly glow.
+        let halo = diameter * (isRetro ? 1.9 : 4.5)
         glow.bounds = CGRect(x: 0, y: 0, width: halo, height: halo)
         glow.position = center
+        glow.opacity = isRetro ? 0.55 : 1
         glow.removeAllAnimations()
         let breathe = CABasicAnimation(keyPath: "transform.scale")
         breathe.fromValue = 0.96
@@ -340,10 +362,10 @@ final class SunNode: Node {
 
 // MARK: - Clouds
 
-/// Soft procedural cloud banks drifting across in 3–6 minutes. `density` sets how many
-/// (2–8), `size` how wide, `speed` how fast, `direction` 270 drifts them leftward,
-/// `position.y` centers the band they fly in, `colors[0]` lights them and `colors[1]`
-/// shades their undersides.
+/// Soft procedural cloud banks drifting across. `density` sets how many (2–8), `size` how
+/// wide, `speed` how fast (0.2 crosses in 3–6 minutes, like the original sky), `direction`
+/// 270 drifts them leftward, `position.y` centers their band. `colors`: light, shade, then
+/// extra lights that some banks take instead of the first.
 final class CloudsNode: Node {
     private var clouds: [CALayer] = []
 
@@ -353,25 +375,26 @@ final class CloudsNode: Node {
         var random = SplitMix(seed: seed)
         let count = Int((4 * spec.densityFactor).rounded()).clamped(2, 8)
         let center = spec.position?.y ?? 0.52
+        let pace = spec.speedFactor / Relative.factor(0.2, range: 4)
         return (0 ..< count).map { index in
-            // Spread evenly through the band so banks don't stack, with a little jitter.
+            // Spread through the band so banks don't stack, with a little jitter.
             let lane = (Double(index) + 0.5) / Double(count)
             return Bank(
                 seed: UInt64(11 + index * 12) ^ (seed & 0xFFFF), y: min(max(center + (lane - 0.5) * 0.76 + random.range(-0.04, 0.04), 0.06), 0.94),
                 width: random.range(0.38, 0.56) * spec.sizeFactor, alpha: random.range(0.5, 0.8),
-                crossing: random.range(200, 360) / spec.speedFactor, phase: random.unit()
+                crossing: random.range(200, 360) / pace, phase: random.unit()
             )
         }
     }
 
     override func build(_: NodeContext) {
         let colors = spec.palette([.white])
-        let tint = colors[0]
-        let shade = colors.count > 1 ? colors[1] : tint.mixed(with: RGBA(0x8D9AB8), 0.3)
-        for bank in banks {
+        let shade = colors.count > 1 ? colors[1] : colors[0].lerp(RGBA(0x8D9AB8), 0.3)
+        let lights = [colors[0]] + colors.dropFirst(2)
+        for (index, bank) in banks.enumerated() {
             let cloud = CALayer()
             cloud.contentsGravity = .resize
-            cloud.contents = Artwork.cloud(seed: bank.seed, tint: tint, shade: shade)
+            cloud.contents = Artwork.cloud(seed: bank.seed, tint: lights[index % lights.count], shade: shade)
             cloud.opacity = Float(bank.alpha)
             layer.addSublayer(cloud)
             clouds.append(cloud)
@@ -384,8 +407,7 @@ final class CloudsNode: Node {
         for (cloud, bank) in zip(clouds, banks) {
             let width = bank.width * max(size.width, 900)
             cloud.bounds = CGRect(x: 0, y: 0, width: width, height: width * 0.36)
-            let y = size.height * (1 - bank.y)
-            cloud.position = CGPoint(x: bank.phase * size.width, y: y)
+            cloud.position = CGPoint(x: bank.phase * size.width, y: size.height * (1 - bank.y))
             cloud.removeAnimation(forKey: "drift")
             let drift = CABasicAnimation(keyPath: "position.x")
             drift.fromValue = leftward ? size.width + width / 2 : -width / 2
@@ -393,19 +415,17 @@ final class CloudsNode: Node {
             cloud.add(Timing.loop(drift, duration: bank.crossing, phase: bank.phase), forKey: "drift")
         }
     }
-
-    override func setScale(_: CGFloat) {}
 }
 
 // MARK: - Grain
 
-/// Tiled monochrome noise against gradient banding. Opacity is the noise strength
-/// (default 3 %); `size` scales the grain.
+/// Tiled noise against gradient banding. Opacity is its strength (default 3 %); `size`
+/// scales the grain; a color makes it that color's tooth instead of gray.
 final class GrainNode: Node {
     override class var defaultOpacity: Double { 0.03 }
 
     override func build(_: NodeContext) {
-        guard let noise = Artwork.noiseTile else { return }
+        guard let noise = Artwork.noiseTile(tint: spec.colors?.first) else { return }
         let side = 64 * spec.sizeFactor
         layer.backgroundColor = NSColor(patternImage: NSImage(cgImage: noise, size: NSSize(width: side, height: side))).cgColor
     }
@@ -413,10 +433,4 @@ final class GrainNode: Node {
 
 extension Int {
     func clamped(_ low: Int, _ high: Int) -> Int { Swift.min(Swift.max(self, low), high) }
-}
-
-extension Double {
-    static func random(in range: ClosedRange<Double>, using random: inout SplitMix) -> Double {
-        random.range(range.lowerBound, range.upperBound)
-    }
 }

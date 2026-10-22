@@ -80,15 +80,21 @@ enum OffscreenRenderer {
         }
 
         func frame(at time: CFTimeInterval = CACurrentMediaTime()) -> CGImage? {
+            step(at: time)
+            guard let buffer = queue.makeCommandBuffer() else { return nil }
+            buffer.commit()
+            buffer.waitUntilCompleted()
+            return image()
+        }
+
+        /// Renders without reading back: emitters advance only as frames are rendered, in
+        /// real time, so captures render ~30 frames a second between the ones they keep.
+        func step(at time: CFTimeInterval = CACurrentMediaTime()) {
             clear()
             renderer.beginFrame(atTime: time, timeStamp: nil)
             renderer.addUpdate(renderer.bounds)
             renderer.render()
             renderer.endFrame()
-            guard let buffer = queue.makeCommandBuffer() else { return nil }
-            buffer.commit()
-            buffer.waitUntilCompleted()
-            return image()
         }
 
         private func clear() {

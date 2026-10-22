@@ -40,7 +40,8 @@ extension RGBA {
         CGColor(srgbRed: red, green: green, blue: blue, alpha: max(0, min(1, alpha * factor)))
     }
 
-    func mixed(with other: RGBA, _ t: Double) -> RGBA {
+    /// Straight sRGB interpolation (cheap; ThemeKit's `mixed(with:t:)` blends in OKLab).
+    func lerp(_ other: RGBA, _ t: Double) -> RGBA {
         RGBA(
             red: red + (other.red - red) * t, green: green + (other.green - green) * t,
             blue: blue + (other.blue - blue) * t, alpha: alpha + (other.alpha - alpha) * t
@@ -91,25 +92,62 @@ extension SceneLayer {
     }
 }
 
-/// Gradient stops resampled to a fixed count, so any two gradients animate into each other
-/// (`CAGradientLayer` can't interpolate arrays of different lengths).
+/// Gradients as `CAGradientLayer` colors and locations, stops exactly as written (two at
+/// one location make a hard edge). To morph between gradients with different stops, both are
+/// expressed at the union of their locations, so the arrays line up.
 enum GradientSampler {
-    static let stopCount = 9
+    struct Shape: Equatable {
+        var colors: [RGBA]
+        var locations: [Double]
+    }
 
-    static func resample(_ stops: [GradientStop]) -> [RGBA] {
-        let sorted = stops.sorted { $0.location < $1.location }
-        guard let first = sorted.first, let last = sorted.last else {
-            return Array(repeating: RGBA(red: 0, green: 0, blue: 0), count: stopCount)
+    static func sorted(_ stops: [GradientStop]) -> [GradientStop] {
+        // Stable: stops at one location keep their order (the hard edge's two sides).
+        stops.enumerated().sorted { ($0.element.location, $0.offset) < ($1.element.location, $1.offset) }.map(\.element)
+    }
+
+    static func shape(_ stops: [GradientStop]) -> Shape {
+        let sorted = sorted(stops)
+        guard !sorted.isEmpty else { return Shape(colors: [RGBA(0x000000), RGBA(0x000000)], locations: [0, 1]) }
+        if sorted.count == 1 { return Shape(colors: [sorted[0].color, sorted[0].color], locations: [0, 1]) }
+        return Shape(colors: sorted.map(\.color), locations: sorted.map { min(max($0.location, 0), 1) })
+    }
+
+    /// `a` and `b` at the same locations: each distinct location appears as many times as
+    /// either gradient has stops there.
+    static func aligned(_ a: [GradientStop], _ b: [GradientStop]) -> (from: Shape, to: Shape) {
+        let first = shape(a), second = shape(b)
+        var locations: [Double] = []
+        let all = (first.locations + second.locations).sorted()
+        var index = 0
+        while index < all.count {
+            let location = all[index]
+            let multiplicity = max(first.locations.filter { abs($0 - location) < 1e-6 }.count, second.locations.filter { abs($0 - location) < 1e-6 }.count, 1)
+            locations.append(contentsOf: Array(repeating: location, count: multiplicity))
+            while index < all.count, abs(all[index] - location) < 1e-6 { index += 1 }
         }
-        return (0 ..< stopCount).map { index in
-            let location = Double(index) / Double(stopCount - 1)
-            if location <= first.location { return first.color }
-            if location >= last.location { return last.color }
-            guard let upper = sorted.firstIndex(where: { $0.location >= location }), upper > 0 else { return last.color }
-            let a = sorted[upper - 1], b = sorted[upper]
-            let span = b.location - a.location
-            return span > 0 ? a.color.mixed(with: b.color, (location - a.location) / span) : b.color
+        func sample(_ shape: Shape) -> [RGBA] {
+            var seen: [Double: Int] = [:]
+            return locations.map { location in
+                let occurrence = seen[location, default: 0]
+                seen[location] = occurrence + 1
+                return color(shape, at: location, occurrence: occurrence)
+            }
         }
+        return (Shape(colors: sample(first), locations: locations), Shape(colors: sample(second), locations: locations))
+    }
+
+    /// The color at `location`; at a hard edge, `occurrence` picks the side.
+    static func color(_ shape: Shape, at location: Double, occurrence: Int = 0) -> RGBA {
+        let exact = shape.locations.indices.filter { abs(shape.locations[$0] - location) < 1e-6 }
+        if !exact.isEmpty { return shape.colors[exact[min(occurrence, exact.count - 1)]] }
+        guard let firstLocation = shape.locations.first, let lastLocation = shape.locations.last,
+              let firstColor = shape.colors.first, let lastColor = shape.colors.last else { return RGBA(0x000000) }
+        if location <= firstLocation { return firstColor }
+        if location >= lastLocation { return lastColor }
+        guard let upper = shape.locations.firstIndex(where: { $0 > location }), upper > 0 else { return lastColor }
+        let low = shape.locations[upper - 1], high = shape.locations[upper]
+        return shape.colors[upper - 1].lerp(shape.colors[upper], (location - low) / (high - low))
     }
 }
 

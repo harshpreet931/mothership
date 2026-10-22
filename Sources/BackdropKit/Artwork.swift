@@ -54,25 +54,79 @@ enum Artwork {
         }
     }
 
-    /// A soft moon with a wide glow; `disc` lights the face, `glow` the halo.
-    static func moon(disc: RGBA, glow: RGBA) -> CGImage? {
-        cached("moon-\(disc.hex)-\(glow.hex)") {
+    /// A soft moon with a wide glow, 264 px; the disc is a fifth of the sprite.
+    static func moon(_ tint: RGBA) -> CGImage? {
+        cached("moon-\(tint.hex)") {
             let side = 264
             guard let context = bitmap(width: side, height: side) else { return nil }
             let center = CGPoint(x: Double(side) / 2, y: Double(side) / 2)
+            let glow = tint.lerp(RGBA(0xDDE4FF), 0.5)
             radial(context, center: center, radius: CGFloat(side) / 2, color: glow, alphas: [0.34, 0.12, 0.04, 0], locations: [0, 0.2, 0.5, 1])
-            let radius: CGFloat = 20
+            let radius: CGFloat = 26
             context.saveGState()
             context.addEllipse(in: CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2))
             context.clip()
-            let lit = disc, shaded = disc.mixed(with: RGBA(0x9A9484), 0.22)
-            if let shade = CGGradient(colorsSpace: sRGB, colors: [lit.cgColor, shaded.cgColor] as CFArray, locations: [0, 1]) {
+            let shaded = tint.lerp(RGBA(0x9A9484), 0.22)
+            if let shade = CGGradient(colorsSpace: sRGB, colors: [tint.cgColor, shaded.cgColor] as CFArray, locations: [0, 1]) {
                 context.drawLinearGradient(shade, start: CGPoint(x: center.x - radius, y: center.y + radius), end: CGPoint(x: center.x + radius, y: center.y - radius), options: [])
             }
             // Faint maria.
             context.setFillColor(RGBA(0xBFB9AA).cgColor(alpha: 0.16))
-            for (dx, dy, r) in [(-6.0, 5.0, 6.0), (5.0, -3.0, 4.0), (-2.0, -8.0, 3.0), (7.0, 7.0, 2.5)] {
+            for (dx, dy, r) in [(-7.8, 6.5, 7.8), (6.5, -3.9, 5.2), (-2.6, -10.4, 3.9), (9.1, 9.1, 3.25)] {
                 context.fillEllipse(in: CGRect(x: center.x + dx - r, y: center.y + dy - r, width: r * 2, height: r * 2))
+            }
+            context.restoreGState()
+            return context.makeImage()
+        }
+    }
+
+    /// The Earth seen from the Moon, 256 px with the disc 70 % across: ocean (`colors[0]`,
+    /// shaded toward `colors[1]`), land in the most saturated other color, clouds in the
+    /// lightest, lit from the upper left with the night side falling into shadow, and a thin
+    /// atmosphere.
+    static func earth(_ colors: [RGBA]) -> CGImage? {
+        cached("earth-" + colors.map(\.hex).joined()) {
+            let side = 256
+            guard let context = bitmap(width: side, height: side), let ocean = colors.first else { return nil }
+            let center = CGPoint(x: 128, y: 128)
+            let radius = 89.6
+            let deep = colors.count > 2 ? colors[1] : ocean.lerp(RGBA(0x0A1A40), 0.4)
+            let others = colors.count > 2 ? Array(colors.dropFirst(2)) : Array(colors.dropFirst())
+            func saturation(_ c: RGBA) -> Double { max(c.red, c.green, c.blue) - min(c.red, c.green, c.blue) }
+            func lightness(_ c: RGBA) -> Double { c.red + c.green + c.blue }
+            let light = others.max { lightness($0) < lightness($1) }
+            let cloud = light.flatMap { lightness($0) > 2.2 ? $0 : nil } ?? RGBA(0xF2F7FF)
+            let land = others.filter { $0 != cloud }.max { saturation($0) < saturation($1) } ?? RGBA(0x3E9E6A)
+            radial(context, center: center, radius: 128, color: ocean.lerp(.white, 0.35), alphas: [0, 0, 0.3, 0.1, 0], locations: [0, 0.66, 0.71, 0.82, 1])
+            context.saveGState()
+            context.addEllipse(in: CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2))
+            context.clip()
+            if let gradient = CGGradient(colorsSpace: sRGB, colors: [ocean.lerp(.white, 0.15).cgColor, ocean.cgColor, deep.cgColor] as CFArray, locations: [0, 0.45, 1]) {
+                context.drawRadialGradient(gradient, startCenter: CGPoint(x: center.x - 30, y: center.y + 30), startRadius: 0, endCenter: center, endRadius: radius * 1.1, options: [.drawsAfterEndLocation])
+            }
+            var random = SplitMix(seed: 0xEA27)
+            // Continents: soft-edged blobs of overlapping lobes.
+            for _ in 0 ..< 4 {
+                let c = CGPoint(x: center.x + random.centered() * radius * 0.65, y: center.y + random.centered() * radius * 0.65)
+                for _ in 0 ..< 6 {
+                    let lobe = CGPoint(x: c.x + random.centered() * 22, y: c.y + random.centered() * 16)
+                    radial(context, center: lobe, radius: random.range(10, 22), color: land, alphas: [0.95, 0.85, 0], locations: [0, 0.7, 1])
+                }
+            }
+            // Clouds: long soft bands and a few swirls.
+            for _ in 0 ..< 14 {
+                context.saveGState()
+                let c = CGPoint(x: center.x + random.centered() * radius * 0.8, y: center.y + random.centered() * radius * 0.8)
+                context.translateBy(x: c.x, y: c.y)
+                context.rotate(by: random.range(-0.5, 0.5))
+                context.scaleBy(x: random.range(2, 4), y: 1)
+                radial(context, center: .zero, radius: random.range(5, 10), color: cloud, alphas: [0.75, 0.4, 0], locations: [0, 0.5, 1])
+                context.restoreGState()
+            }
+            // Night side: lit from the upper left, dark toward the lower right.
+            let night = [CGColor(gray: 0, alpha: 0), CGColor(gray: 0, alpha: 0.15), CGColor(gray: 0, alpha: 0.88)] as CFArray
+            if let shadow = CGGradient(colorsSpace: CGColorSpaceCreateDeviceGray(), colors: night, locations: [0, 0.55, 0.8]) {
+                context.drawLinearGradient(shadow, start: CGPoint(x: center.x - radius, y: center.y + radius), end: CGPoint(x: center.x + radius, y: center.y - radius), options: [.drawsAfterEndLocation])
             }
             context.restoreGState()
             return context.makeImage()
@@ -95,9 +149,34 @@ enum Artwork {
             let side = 128
             guard let context = bitmap(width: side, height: side) else { return nil }
             let center = CGPoint(x: 64, y: 64)
-            let core = color.mixed(with: .white, 0.55)
+            let core = color.lerp(.white, 0.55)
             guard let gradient = CGGradient(colorsSpace: sRGB, colors: [core.cgColor, color.cgColor, color.cgColor(alpha: 0.9), color.cgColor(alpha: 0)] as CFArray, locations: [0, 0.7, 0.94, 1]) else { return nil }
             context.drawRadialGradient(gradient, startCenter: center, startRadius: 0, endCenter: center, endRadius: 64, options: [])
+            return context.makeImage()
+        }
+    }
+
+    /// A retro sun: a vertical gradient through `colors` (top to bottom), with horizontal
+    /// slits cut through its lower half that widen toward the bottom. 256 px, disc edge to edge.
+    static func retroSun(_ colors: [RGBA]) -> CGImage? {
+        cached("retroSun-" + colors.map(\.hex).joined()) {
+            let side = 256
+            guard let context = bitmap(width: side, height: side) else { return nil }
+            context.addEllipse(in: CGRect(x: 1, y: 1, width: side - 2, height: side - 2))
+            context.clip()
+            // Slits: even-odd against the whole square cuts them out of the disc.
+            context.addRect(CGRect(x: 0, y: 0, width: side, height: side))
+            for index in 0 ..< 7 {
+                let progress = Double(index) / 6
+                let height = 3 + progress * 14
+                let y = 112 - progress * 104 - height / 2
+                context.addRect(CGRect(x: 0, y: y, width: Double(side), height: height))
+            }
+            context.clip(using: .evenOdd)
+            let stops = colors.indices.map { CGFloat($0) / CGFloat(max(colors.count - 1, 1)) }
+            if let gradient = CGGradient(colorsSpace: sRGB, colors: colors.map(\.cgColor) as CFArray, locations: stops) {
+                context.drawLinearGradient(gradient, start: CGPoint(x: 128, y: 256), end: CGPoint(x: 128, y: 0), options: [])
+            }
             return context.makeImage()
         }
     }
@@ -127,12 +206,23 @@ enum Artwork {
         }
     }
 
-    /// 64 px monochrome noise, tiled against gradient banding.
-    static var noiseTile: CGImage? {
-        cached("noise") {
+    /// 64 px noise tiled against gradient banding: gray (lightens and darkens), or `tint`
+    /// with the noise as alpha (paper tooth, colored film).
+    static func noiseTile(tint: RGBA?) -> CGImage? {
+        cached("noise-\(tint?.hex ?? "gray")") {
             let side = 64
-            var pixels = [UInt8](repeating: 0, count: side * side)
             var random = SplitMix(seed: 0xA5A5)
+            if let tint {
+                guard let context = bitmap(width: side, height: side) else { return nil }
+                for y in 0 ..< side {
+                    for x in 0 ..< side {
+                        context.setFillColor(tint.cgColor(alpha: random.unit()))
+                        context.fill(CGRect(x: x, y: y, width: 1, height: 1))
+                    }
+                }
+                return context.makeImage()
+            }
+            var pixels = [UInt8](repeating: 0, count: side * side)
             for index in pixels.indices { pixels[index] = UInt8(random.unit() * 255) }
             guard let provider = CGDataProvider(data: Data(pixels) as CFData) else { return nil }
             return CGImage(
@@ -145,61 +235,86 @@ enum Artwork {
 
     // MARK: Aurora and nebula
 
-    /// An aurora curtain as an alpha mask, 1024 × 256: a wavering lower edge, fine vertical
-    /// rays, brightest just above the edge and fading upward. Tiles horizontally.
+    /// An aurora curtain as an alpha mask, two periods of 1024 × 256 side by side (so sliding
+    /// it by one period loops): a folded lower edge that's brightest, fine vertical rays of
+    /// varying height and strength, fading upward.
     static func auroraCurtain(seed: UInt64) -> CGImage? {
         cached("curtain-\(seed)") {
-            let width = 1024, height = 256
+            let period = 1024, width = period * 2, height = 256
             guard let context = bitmap(width: width, height: height) else { return nil }
             var random = SplitMix(seed: seed)
-            // Periodic in x (integer cycles), so the image tiles without a seam.
-            var waves: [(cycles: Double, amplitude: Double, phase: Double)] = []
+            // Periodic in x (whole cycles per period), so the halves match.
+            var folds: [(cycles: Double, amplitude: Double, phase: Double)] = []
             for index in 0 ..< 3 {
                 let harmonic = Double(index + 1)
-                waves.append((harmonic * random.range(1, 2).rounded(), random.range(10, 26) / harmonic, random.range(0, 2 * .pi)))
+                folds.append((harmonic * random.range(2, 4).rounded(), random.range(7, 15) / harmonic, random.range(0, 2 * .pi)))
             }
-            var rayWaves: [(cycles: Double, phase: Double)] = []
-            for _ in 0 ..< 4 { rayWaves.append((random.range(9, 40).rounded(), random.range(0, 2 * .pi))) }
+            var rays: [(cycles: Double, weight: Double, phase: Double)] = []
+            for index in 0 ..< 6 {
+                rays.append((random.range(index < 3 ? 12 : 50, index < 3 ? 40 : 140).rounded(), index < 3 ? 1 : 0.6, random.range(0, 2 * .pi)))
+            }
+            let gray = CGColorSpaceCreateDeviceGray()
             for x in 0 ..< width {
-                let u = Double(x) / Double(width)
-                var edge = 48.0
-                for wave in waves { edge += wave.amplitude * sin(2 * .pi * wave.cycles * u + wave.phase) }
-                var ray = 0.0
-                for wave in rayWaves { ray += sin(2 * .pi * wave.cycles * u + wave.phase) }
-                let strength = 0.45 + 0.55 * pow((ray / 4 + 1) / 2, 1.6)
-                let reach = 120 + 70 * (ray / 4 + 1) / 2
-                let alphas: [CGFloat] = [0, strength, strength * 0.55, 0]
-                let colors = alphas.map { CGColor(gray: 1, alpha: $0) } as CFArray
-                guard let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceGray(), colors: colors, locations: [0, 0.06, 0.35, 1]) else { continue }
+                let u = Double(x) / Double(period)
+                var edge = 70.0
+                for fold in folds { edge += fold.amplitude * sin(2 * .pi * fold.cycles * u + fold.phase) }
+                // Rays don't all start on one line: the brighter ones reach lower.
+                var ray = 0.0, total = 0.0
+                for wave in rays {
+                    ray += wave.weight * sin(2 * .pi * wave.cycles * u + wave.phase)
+                    total += wave.weight
+                }
+                let level = (ray / total + 1) / 2
+                let strength = 0.2 + 0.8 * pow(level, 2.4)
+                let reach = 70 + 130 * level
+                edge -= 10 * level
+                let alphas: [CGFloat] = [0, strength * 0.55, strength, strength * 0.7, strength * 0.28, 0]
+                guard let gradient = CGGradient(colorsSpace: gray, colors: alphas.map { CGColor(gray: 1, alpha: $0) } as CFArray, locations: [0, 0.05, 0.12, 0.25, 0.55, 1]) else { continue }
                 context.saveGState()
                 context.clip(to: CGRect(x: x, y: 0, width: 1, height: height))
-                context.drawLinearGradient(gradient, start: CGPoint(x: Double(x), y: edge - 6), end: CGPoint(x: Double(x), y: edge + reach), options: [])
+                context.drawLinearGradient(gradient, start: CGPoint(x: Double(x), y: edge - 3), end: CGPoint(x: Double(x), y: edge + reach), options: [])
                 context.restoreGState()
             }
             guard let image = context.makeImage() else { return nil }
-            return blurred(image, radius: 2.5)
+            return blurred(image, radius: 1.2)
         }
     }
 
-    /// A soft, cloudy nebula blob in `color`, 256 px, with a brighter heart and wispy edges.
+    /// A cloudy nebula blob in `color`, 256 px: many puffs along a few curving filaments, a
+    /// brighter heart, and darker dust lanes cut through it.
     static func nebula(seed: UInt64, color: RGBA) -> CGImage? {
         cached("nebula-\(seed)-\(color.hex)") {
             let side = 256
             guard let context = bitmap(width: side, height: side) else { return nil }
             var random = SplitMix(seed: seed)
-            let heart = color.mixed(with: .white, 0.35)
-            for _ in 0 ..< 26 {
-                let angle = random.range(0, 2 * .pi)
-                let distance = abs(random.centered()) * 70
-                let center = CGPoint(x: 128 + cos(angle) * distance, y: 128 + sin(angle) * distance)
-                radial(context, center: center, radius: random.range(28, 70), color: color, alphas: [random.range(0.12, 0.3), 0.06, 0], locations: [0, 0.5, 1])
+            let heart = color.lerp(.white, 0.35)
+            radial(context, center: CGPoint(x: 128, y: 128), radius: 120, color: color, alphas: [0.22, 0.1, 0], locations: [0, 0.55, 1])
+            for _ in 0 ..< 4 {
+                // A filament: puffs along a bent arc.
+                var point = CGPoint(x: 128 + random.centered() * 50, y: 128 + random.centered() * 50)
+                var angle = random.range(0, 2 * .pi)
+                for _ in 0 ..< 12 {
+                    radial(context, center: point, radius: random.range(14, 34), color: color, alphas: [random.range(0.12, 0.28), 0.05, 0], locations: [0, 0.55, 1])
+                    angle += random.range(-0.5, 0.5)
+                    point = CGPoint(x: point.x + cos(angle) * 12, y: point.y + sin(angle) * 12)
+                }
             }
-            for _ in 0 ..< 5 {
-                let center = CGPoint(x: 128 + random.centered() * 30, y: 128 + random.centered() * 30)
-                radial(context, center: center, radius: random.range(16, 34), color: heart, alphas: [0.22, 0.08, 0], locations: [0, 0.45, 1])
+            for _ in 0 ..< 4 {
+                let center = CGPoint(x: 128 + random.centered() * 28, y: 128 + random.centered() * 28)
+                radial(context, center: center, radius: random.range(14, 30), color: heart, alphas: [0.28, 0.1, 0], locations: [0, 0.45, 1])
+            }
+            context.setBlendMode(.destinationOut)
+            context.setLineCap(.round)
+            for _ in 0 ..< 3 {
+                context.setStrokeColor(CGColor(gray: 0, alpha: random.range(0.25, 0.45)))
+                context.setLineWidth(random.range(6, 14))
+                let start = CGPoint(x: random.range(40, 216), y: random.range(40, 216))
+                context.move(to: start)
+                context.addQuadCurve(to: CGPoint(x: start.x + random.centered() * 120, y: start.y + random.centered() * 120), control: CGPoint(x: random.range(40, 216), y: random.range(40, 216)))
+                context.strokePath()
             }
             guard let image = context.makeImage() else { return nil }
-            return blurred(image, radius: 9)
+            return blurred(image, radius: 6)
         }
     }
 
@@ -216,12 +331,12 @@ enum Artwork {
     /// A thin streak, brightest at its leading (lower) end.
     static var rainStreak: CGImage? {
         cached("rain") {
-            guard let context = bitmap(width: 6, height: 96) else { return nil }
+            guard let context = bitmap(width: 8, height: 96) else { return nil }
             let colors = [CGColor(gray: 1, alpha: 0.95), CGColor(gray: 1, alpha: 0.5), CGColor(gray: 1, alpha: 0)] as CFArray
             guard let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceGray(), colors: colors, locations: [0, 0.25, 1]) else { return nil }
-            context.addPath(CGPath(roundedRect: CGRect(x: 2, y: 0, width: 2, height: 96), cornerWidth: 1, cornerHeight: 1, transform: nil))
+            context.addPath(CGPath(roundedRect: CGRect(x: 2.5, y: 0, width: 3, height: 96), cornerWidth: 1.5, cornerHeight: 1.5, transform: nil))
             context.clip()
-            context.drawLinearGradient(gradient, start: CGPoint(x: 3, y: 0), end: CGPoint(x: 3, y: 96), options: [])
+            context.drawLinearGradient(gradient, start: CGPoint(x: 4, y: 0), end: CGPoint(x: 4, y: 96), options: [])
             return context.makeImage()
         }
     }
@@ -253,19 +368,25 @@ enum Artwork {
     static var ember: CGImage? {
         cached("ember") {
             guard let context = bitmap(width: 24, height: 24) else { return nil }
-            radial(context, center: CGPoint(x: 12, y: 12), radius: 12, color: .white, alphas: [1, 0.9, 0.3, 0], locations: [0, 0.2, 0.5, 1])
+            radial(context, center: CGPoint(x: 12, y: 12), radius: 12, color: .white, alphas: [1, 1, 0.5, 0.12, 0], locations: [0, 0.18, 0.4, 0.7, 1])
             return context.makeImage()
         }
     }
 
-    /// A bubble: clear middle, a bright rim and a specular highlight up and to the left.
-    static var bubble: CGImage? {
-        cached("bubble") {
+    /// A bubble: clear middle, a bright rim and a specular highlight. `turn` (radians) is
+    /// how far the emitter is tilted, so the highlight is pre-rotated to stay up and left.
+    static func bubble(turn: Double = 0) -> CGImage? {
+        let degrees = Int((turn * 180 / .pi).rounded())
+        return cached("bubble-\(degrees)") {
             let side = 64
             guard let context = bitmap(width: side, height: side) else { return nil }
             radial(context, center: CGPoint(x: 32, y: 32), radius: 31, color: .white, alphas: [0.04, 0.08, 0.5, 0.9, 0], locations: [0, 0.6, 0.86, 0.95, 1])
-            radial(context, center: CGPoint(x: 22, y: 43), radius: 9, color: .white, alphas: [0.95, 0.4, 0], locations: [0, 0.45, 1])
-            radial(context, center: CGPoint(x: 41, y: 21), radius: 5, color: .white, alphas: [0.35, 0], locations: [0, 1])
+            func spot(_ dx: Double, _ dy: Double) -> CGPoint {
+                let angle = -Double(degrees) * .pi / 180
+                return CGPoint(x: 32 + dx * cos(angle) - dy * sin(angle), y: 32 + dx * sin(angle) + dy * cos(angle))
+            }
+            radial(context, center: spot(-10, 11), radius: 9, color: .white, alphas: [0.95, 0.4, 0], locations: [0, 0.45, 1])
+            radial(context, center: spot(9, -11), radius: 5, color: .white, alphas: [0.35, 0], locations: [0, 1])
             return context.makeImage()
         }
     }
@@ -274,7 +395,7 @@ enum Artwork {
     static var firefly: CGImage? {
         cached("firefly") {
             guard let context = bitmap(width: 48, height: 48) else { return nil }
-            radial(context, center: CGPoint(x: 24, y: 24), radius: 24, color: .white, alphas: [1, 0.85, 0.25, 0.08, 0], locations: [0, 0.08, 0.25, 0.55, 1])
+            radial(context, center: CGPoint(x: 24, y: 24), radius: 24, color: .white, alphas: [1, 0.9, 0.45, 0.15, 0], locations: [0, 0.12, 0.3, 0.6, 1])
             return context.makeImage()
         }
     }
@@ -333,9 +454,10 @@ enum Artwork {
     static let glyphsPerColumn = 26
     static let glyphCell = CGSize(width: 18, height: 22)
 
-    /// Columns of glyphs in `color`, each brightening toward its head (the bottom), at 2×.
-    static func glyphAtlas(_ color: RGBA) -> CGImage? {
-        cached("glyphs-\(color.hex)") {
+    /// Columns of glyphs, each brightening toward its head (the bottom), at 2×. Alternate
+    /// columns use the second color; heads use the third (or a whitened first).
+    static func glyphAtlas(_ colors: [RGBA]) -> CGImage? {
+        cached("glyphs-" + colors.map(\.hex).joined()) {
             let scale = 2.0
             let cellWidth = glyphCell.width * scale, cellHeight = glyphCell.height * scale
             let width = Int(cellWidth) * glyphColumns, height = Int(cellHeight) * glyphsPerColumn
@@ -348,7 +470,8 @@ enum Artwork {
                     // Row 0 is the top of the image (CG's y is up): the tail; the head is last.
                     let progress = Double(row + 1) / Double(glyphsPerColumn)
                     let isHead = row == glyphsPerColumn - 1
-                    let tint = isHead ? color.mixed(with: .white, 0.7) : color
+                    let body = colors[column % 2 == 1 && colors.count > 1 ? 1 : 0]
+                    let tint = isHead ? (colors.count > 2 ? colors[2] : body.lerp(.white, 0.7)) : body
                     let alpha = isHead ? 1 : pow(progress, 1.8) * 0.85
                     let glyph = String(glyphs[Int(random.unit() * Double(glyphs.count)) % glyphs.count])
                     let attributes: [NSAttributedString.Key: Any] = [

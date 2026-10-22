@@ -96,6 +96,7 @@ final class Stage {
         }
         for node in available.values { retire(node, fade: fade) }
         slots = updated
+        for slot in slots { slot.node.sceneGradient(next.gradient, duration: previous != nil ? transition : 0) }
         // Draw order follows the scene; retiring layers stay where they were until they go.
         var below: CALayer?
         for slot in slots {
@@ -109,10 +110,12 @@ final class Stage {
     }
 
     private func animateOpacity(of layer: CALayer, from: Float, to: Float, duration: TimeInterval) {
+        // Mid-fade, start from what's on screen.
+        let start = layer.animation(forKey: "fade") != nil ? (layer.presentation()?.opacity ?? from) : from
         layer.opacity = to
-        guard duration > 0, from != to else { return }
+        guard duration > 0, start != to else { return }
         let animation = CABasicAnimation(keyPath: "opacity")
-        animation.fromValue = (layer.presentation() ?? layer).opacity == to ? from : (layer.presentation()?.opacity ?? from)
+        animation.fromValue = start
         animation.toValue = to
         animation.duration = duration
         animation.timingFunction = Timing.easeInOut
@@ -133,7 +136,6 @@ final class Stage {
                 self.retiring.removeAll { $0 === node }
             }
         }
-        node.setMotion(.paused == motion ? .paused : motion)
         if let particles = node as? ParticlesNode { particles.stopEmitting() }
         animateOpacity(of: node.layer, from: node.layer.opacity, to: 0, duration: fade)
         CATransaction.commit()
@@ -192,6 +194,8 @@ final class SkyLayers {
     private(set) var glows: [CAGradientLayer] = []
     private var specs: [Glow] = []
     private var size: CGSize = .zero
+    /// The gradient on screen (or animating toward).
+    private var shown: [GradientStop]?
 
     init() {
         layer.anchorPoint = .zero
@@ -199,7 +203,6 @@ final class SkyLayers {
         // macOS layers are y-up: (0.5, 1) is the top of the window.
         gradient.startPoint = CGPoint(x: 0.5, y: 1)
         gradient.endPoint = CGPoint(x: 0.5, y: 0)
-        gradient.locations = (0 ..< GradientSampler.stopCount).map { NSNumber(value: Double($0) / Double(GradientSampler.stopCount - 1)) }
         layer.addSublayer(gradient)
     }
 
@@ -223,8 +226,26 @@ final class SkyLayers {
     }
 
     func apply(_ scene: Scene, duration: TimeInterval) {
-        let colors = GradientSampler.resample(scene.gradient).map(\.cgColor)
-        morph(gradient, keyPath: "colors", to: colors, duration: duration) { gradient.colors = colors }
+        if duration > 0, let shown {
+            // Both gradients at the union of their stops, so the colors interpolate pairwise.
+            let (from, to) = GradientSampler.aligned(shown, scene.gradient)
+            let fromColors = from.colors.map(\.cgColor), toColors = to.colors.map(\.cgColor)
+            let locations = to.locations.map { NSNumber(value: $0) }
+            gradient.removeAnimation(forKey: "morph-colors")
+            gradient.locations = locations
+            gradient.colors = toColors
+            let animation = CABasicAnimation(keyPath: "colors")
+            animation.fromValue = fromColors
+            animation.toValue = toColors
+            animation.duration = duration
+            animation.timingFunction = Timing.easeInOut
+            gradient.add(animation, forKey: "morph-colors")
+        } else {
+            let shape = GradientSampler.shape(scene.gradient)
+            gradient.colors = shape.colors.map(\.cgColor)
+            gradient.locations = shape.locations.map { NSNumber(value: $0) }
+        }
+        shown = scene.gradient
 
         let next = scene.glows ?? []
         if next.count == glows.count {
@@ -292,7 +313,9 @@ final class SkyLayers {
             return
         }
         CATransaction.begin()
-        CATransaction.setCompletionBlock { glow.removeFromSuperlayer() }
+        CATransaction.setCompletionBlock { [weak glow] in
+            MainActor.assumeIsolated { glow?.removeFromSuperlayer() }
+        }
         let animation = CABasicAnimation(keyPath: "opacity")
         animation.fromValue = glow.presentation()?.opacity ?? glow.opacity
         animation.toValue = 0
