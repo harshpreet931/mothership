@@ -171,7 +171,7 @@ struct ComposerView: View {
         .padding(.leading, 16)
         .padding(.trailing, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(ComposerSurface())
+        .background(ComposerSurface(dense: true))
         .animation(Sky.spring, value: queued)
     }
 
@@ -218,15 +218,12 @@ struct ComposerView: View {
     }
 }
 
-/// Opaque bubble capsule with a hairline and a soft shadow: it floats over the cards'
-/// bottom margin, so it must read on terminal and sky alike.
+/// The composer's glass: the same tone as the rest of the chrome, in its own band under the
+/// cards (so it never sits on a terminal and needs no opaque backing).
 private struct ComposerSurface: View {
-    @Environment(\.colorScheme) private var scheme
+    var dense = false
 
     var body: some View {
-        Capsule(style: .continuous)
-            .fill(Sky.bubble)
-            .overlay(Capsule(style: .continuous).strokeBorder(Sky.cardStroke, lineWidth: 1))
-            .shadow(color: .black.opacity(scheme == .dark ? 0.32 : 0.1), radius: 10, y: 4)
+        Color.clear.modifier(GlassBackground(shape: Capsule(style: .continuous), dense: dense))
     }
 }
