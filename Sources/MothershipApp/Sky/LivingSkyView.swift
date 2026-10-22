@@ -212,7 +212,7 @@ final class LivingSkyView: NSView {
             let height = width * 0.36
             cloud.bounds = CGRect(x: 0, y: 0, width: width, height: height)
             cloud.opacity = Float(spec.alpha)
-            let y = bounds.height - spec.y * size.height
+            let y = bounds.height - (spec.inTopBand ? spec.y : spec.y * size.height)
             cloud.position = CGPoint(x: spec.phase * size.width, y: y)
             cloud.removeAnimation(forKey: "drift")
             let drift = CABasicAnimation(keyPath: "position.x")
@@ -371,7 +371,9 @@ final class LivingSkyView: NSView {
     }
 
     private struct CloudSpec {
+        /// `y`: fraction of the height from the top, or points from the top in the top band.
         var seed: UInt64, y: Double, width: Double, alpha: Double, crossing: Double, phase: Double
+        var inTopBand = false
     }
 
     /// ~240 fixed stars, denser toward the top.
@@ -399,12 +401,14 @@ final class LivingSkyView: NSView {
         }
     }()
 
-    /// Four soft cloud banks, 3–6 minutes to cross.
+    /// Soft cloud banks, 3–6 minutes to cross. Most of the window is panels, so two drift
+    /// through the top bar's band and the gutters where they're actually seen; the rest
+    /// tint the glass from behind.
     private static let cloudSpecs: [CloudSpec] = [
-        CloudSpec(seed: 11, y: 0.16, width: 0.46, alpha: 0.75, crossing: 300, phase: 0.18),
-        CloudSpec(seed: 23, y: 0.42, width: 0.38, alpha: 0.5, crossing: 240, phase: 0.62),
-        CloudSpec(seed: 37, y: 0.66, width: 0.56, alpha: 0.8, crossing: 360, phase: 0.4),
-        CloudSpec(seed: 53, y: 0.88, width: 0.5, alpha: 0.65, crossing: 200, phase: 0.86),
+        CloudSpec(seed: 11, y: 30, width: 0.32, alpha: 1, crossing: 300, phase: 0.22, inTopBand: true),
+        CloudSpec(seed: 29, y: 18, width: 0.24, alpha: 0.9, crossing: 230, phase: 0.71, inTopBand: true),
+        CloudSpec(seed: 37, y: 0.46, width: 0.56, alpha: 0.85, crossing: 360, phase: 0.4),
+        CloudSpec(seed: 53, y: 0.86, width: 0.5, alpha: 0.75, crossing: 260, phase: 0.86),
     ]
 
     private static let moonSide: CGFloat = 132
@@ -471,7 +475,7 @@ final class LivingSkyView: NSView {
             let dome = sin(u * .pi)
             let y = 62 + dome * random.range(4, 38)
             let radius = 20 + dome * random.range(12, 30)
-            radial(context, center: CGPoint(x: x, y: y), radius: radius, color: tint, alphas: [0.3, 0.16, 0], locations: [0, 0.5, 1])
+            radial(context, center: CGPoint(x: x, y: y), radius: radius, color: tint, alphas: [0.36, 0.19, 0], locations: [0, 0.5, 1])
         }
         guard let image = context.makeImage() else { return nil }
         return blurred(image, radius: 7)

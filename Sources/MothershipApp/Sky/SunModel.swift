@@ -130,10 +130,12 @@ struct SkyPalette: Equatable, Sendable {
         // Sunrise / sunset.
         (0, SkyPalette(top: RGB(0x2F4D8F), middle: RGB(0x6E86C2), horizon: RGB(0xF2A98A), glow: RGB(0xFFB46A), glowStrength: 0.85, stars: 0, clouds: 0.55, cloudTint: RGB(0xFFC2A6))),
         // Golden hour.
-        (8, SkyPalette(top: RGB(0x4573BF), middle: RGB(0x8DAAD9), horizon: RGB(0xF4D2A8), glow: RGB(0xFFD08A), glowStrength: 0.5, stars: 0, clouds: 0.75, cloudTint: RGB(0xFFF0DE))),
+        (8, SkyPalette(top: RGB(0x3E73CF), middle: RGB(0x79A6E3), horizon: RGB(0xF3D7B5), glow: RGB(0xFFD08A), glowStrength: 0.5, stars: 0, clouds: 0.8, cloudTint: RGB(0xFFF3E4))),
         // Day.
-        (20, SkyPalette(top: RGB(0x4A80CC), middle: RGB(0x8EB0DC), horizon: RGB(0xDCE7F3), glow: RGB(0xFFF4DC), glowStrength: 0.25, stars: 0, clouds: 0.85, cloudTint: RGB(0xFFFFFF))),
-        (60, SkyPalette(top: RGB(0x3F7ACB), middle: RGB(0x84A9DB), horizon: RGB(0xD6E3F2), glow: RGB(0xFFFFFF), glowStrength: 0.15, stars: 0, clouds: 0.85, cloudTint: RGB(0xFFFFFF))),
+        // Day: a saturated cornflower zenith fading to a pale horizon, so the sky still reads
+        // as sky around dark glass (content-led tone keeps a dark terminal's chrome dark).
+        (20, SkyPalette(top: RGB(0x2B6AD8), middle: RGB(0x5C97E8), horizon: RGB(0xCBE1F6), glow: RGB(0xFFF4DC), glowStrength: 0.25, stars: 0, clouds: 0.95, cloudTint: RGB(0xFFFFFF))),
+        (60, SkyPalette(top: RGB(0x2463D5), middle: RGB(0x5492E6), horizon: RGB(0xC2DBF5), glow: RGB(0xFFFFFF), glowStrength: 0.15, stars: 0, clouds: 0.95, cloudTint: RGB(0xFFFFFF))),
     ]
 }
 
