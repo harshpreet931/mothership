@@ -44,6 +44,7 @@ struct FleetView: View {
             if shown.isEmpty {
                 VStack(spacing: 14) {
                     Text(filter == .all ? "No agents yet." : "Nothing here.")
+                        .onSkyText()
                         .font(Sky.Font.serifL)
                         .foregroundStyle(Sky.ink)
                     Button("Start a task") { model.presentNewTask() }

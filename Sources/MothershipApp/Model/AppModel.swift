@@ -87,6 +87,15 @@ final class AppModel {
     var systemIsDark = true
     /// The sun's position for the sky, plus "Animate sky" and "Use my location".
     @ObservationIgnored let skyClock = SkyClock()
+    /// "Terminal follows the sky": a dark theme's light sibling by day (off by default).
+    var terminalFollowsSky = UserDefaults.standard.bool(forKey: PreferenceKey.terminalFollowsSky) {
+        didSet {
+            UserDefaults.standard.set(terminalFollowsSky, forKey: PreferenceKey.terminalFollowsSky)
+            applyTerminalSkyPairing()
+        }
+    }
+    /// The theme the user chose; "Terminal follows the sky" swaps around it, never over it.
+    @ObservationIgnored var baseThemeChoice: TerminalThemeChoice = .automatic
     var isComposerVisible = UserDefaults.standard.object(forKey: PreferenceKey.composerVisible) as? Bool ?? true {
         didSet { UserDefaults.standard.set(isComposerVisible, forKey: PreferenceKey.composerVisible) }
     }

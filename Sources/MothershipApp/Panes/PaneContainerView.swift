@@ -32,8 +32,11 @@ struct PaneActions {
 @MainActor
 final class PaneContainerView: NSView {
     static let cornerRadius = Sky.radiusPane
-    /// Top padding of terminal cards that holds the pane capsule.
+    /// Top padding of terminal cards that holds the pane capsule, while it has something
+    /// to show (an agent, a PR); otherwise the card keeps only `quietTopInset` and the
+    /// capsule floats over that corner on hover.
     static let statusStripHeight: CGFloat = 24
+    static let quietTopInset: CGFloat = 8
 
     let surfaceID: SurfaceID
     private let elevationLayer = CALayer()
@@ -57,8 +60,10 @@ final class PaneContainerView: NSView {
     private var progress: Double?
     private var dark = true
     private var terminalIsDark = true
-    /// Terminal panes (those with chrome) reserve the status strip; browsers bring a toolbar.
+    /// Terminal panes with an agent or PR reserve the status strip; browsers bring a toolbar.
     private var reservesStatusStrip = false
+    /// Terminal panes with nothing to show keep a small top inset only.
+    private var hasQuietInset = false
     /// Clear margin kept at the bottom when this card sits on the canvas's bottom edge, so
     /// the floating composer never covers content.
     var bottomClearance: CGFloat = 0 {
@@ -137,8 +142,11 @@ final class PaneContainerView: NSView {
         setProgress(progress)
         setResume(resume)
         self.chrome = chrome
-        if reservesStatusStrip != (chrome != nil) {
-            reservesStatusStrip = chrome != nil
+        let reserves = chrome.map { $0.session != nil || $0.pullRequest != nil } ?? false
+        let quiet = chrome != nil && !reserves
+        if reservesStatusStrip != reserves || hasQuietInset != quiet {
+            reservesStatusStrip = reserves
+            hasQuietInset = quiet
             needsLayout = true
         }
         updateChrome()
@@ -153,7 +161,7 @@ final class PaneContainerView: NSView {
         tintView?.frame = clipView.bounds
         // Terminal cards keep a status strip as top padding: the pane capsule lives there,
         // so it can never cover a glyph, and the terminal never resizes when it appears.
-        let strip = reservesStatusStrip ? Self.statusStripHeight : 0
+        let strip = reservesStatusStrip ? Self.statusStripHeight : (hasQuietInset ? Self.quietTopInset : 0)
         let banner = bannerHost == nil ? 0 : ResumeBanner.height + 8
         bannerHost?.frame = NSRect(x: 0, y: strip + 2, width: bounds.width, height: ResumeBanner.height)
         let top = strip + banner

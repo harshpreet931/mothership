@@ -15,6 +15,7 @@ struct HomeView: View {
                 TimelineView(.everyMinute) { context in
                     ClockColumn(date: now ?? context.date)
                 }
+                .onSkyText()
                 .frame(width: max(260, geometry.size.width * 0.34), alignment: .leading)
                 .padding(.leading, 56)
                 .accessibilityElement(children: .combine)
@@ -33,6 +34,7 @@ struct HomeView: View {
                                     .foregroundStyle(Sky.secondary)
                             }
                         }
+                        .onSkyText()
                         .padding(.top, 28)
                         if model.needsOnboarding {
                             OnboardingCard(model: model)

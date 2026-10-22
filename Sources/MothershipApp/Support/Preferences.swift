@@ -16,6 +16,8 @@ enum PreferenceKey {
     static let keepSessionsAlive = "sessions.keepAlive"
     /// Terminal cards at 88 % with a blur, letting the sky through.
     static let tintWithSky = "terminal.tintWithSky"
+    /// By day, a dark terminal theme's light sibling ("Terminal follows the sky").
+    static let terminalFollowsSky = "terminal.followsSky"
 
     enum Notifications {
         /// Master switch for banners.

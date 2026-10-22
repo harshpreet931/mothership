@@ -64,11 +64,15 @@ struct CompareView: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
+            .onSkyText()
             Spacer(minLength: 12)
-            TaskPhaseMark(phase: model.phase(of: task))
-            Text(model.phase(of: task).label)
-                .font(Sky.Font.label)
-                .foregroundStyle(Sky.secondary)
+            HStack(spacing: 8) {
+                TaskPhaseMark(phase: model.phase(of: task))
+                Text(model.phase(of: task).label)
+                    .font(Sky.Font.label)
+                    .foregroundStyle(Sky.secondary)
+            }
+            .onSkyText()
         }
         .help(task.prompt)
     }

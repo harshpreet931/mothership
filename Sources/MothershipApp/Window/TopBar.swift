@@ -55,11 +55,11 @@ struct HomeMarkButton: View {
 
     var body: some View {
         Button(action: action) {
-            MothershipMark(variant: .mono(active ? Sky.onSelection : Sky.ink.opacity(0.85)), size: 22)
+            MothershipMark(variant: .mono(active ? Sky.onSegment : Sky.ink.opacity(0.85)), size: 22)
                 .frame(width: 32, height: 32)
                 .background {
                     if active {
-                        Circle().fill(Sky.selection).overlay(Circle().strokeBorder(Sky.selectionStroke, lineWidth: 1))
+                        Circle().fill(Sky.segment).overlay(Circle().strokeBorder(Sky.segmentStroke, lineWidth: 1))
                     } else {
                         Circle().fill(Color.clear).glass(Circle())
                             .overlay(Circle().fill(Sky.ink.opacity(hovering ? 0.05 : 0)))

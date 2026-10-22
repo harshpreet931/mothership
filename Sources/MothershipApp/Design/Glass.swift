@@ -9,11 +9,15 @@ struct GlassBackground<S: InsettableShape>: ViewModifier {
     var dense = false
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.colorScheme) private var scheme
 
     func body(content: Content) -> some View {
         content.background {
             ZStack {
                 let tint = dense ? Sky.glassDense : Sky.glassFill
+                // Light glass over a dark sky (a light terminal at night) would read as grey;
+                // it gets more white so it stays glass.
+                let lift = scheme == .light && SkyContext.shared.skyIsDark
                 if reduceTransparency {
                     shape.fill(Color(nsColor: .skySolidPanel))
                 } else {
@@ -25,6 +29,7 @@ struct GlassBackground<S: InsettableShape>: ViewModifier {
                         shape.fill(.ultraThinMaterial)
                         shape.fill(tint.opacity(0.75))
                     }
+                    if lift { shape.fill(Color.white.opacity(0.28)) }
                     // Top inner hairline: light catching the edge of the glass.
                     shape.strokeBorder(
                         LinearGradient(colors: [Sky.glassHighlight, Sky.glassHighlight.opacity(0)], startPoint: .top, endPoint: .init(x: 0.5, y: 0.35)),
@@ -171,11 +176,11 @@ struct CircleButton: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: size * 0.42, weight: .medium))
-                .foregroundStyle(active ? Sky.onSelection : Sky.ink.opacity(0.82))
+                .foregroundStyle(active ? Sky.onSegment : Sky.ink.opacity(0.82))
                 .frame(width: size, height: size)
                 .background {
                     if active {
-                        Circle().fill(Sky.selection).overlay(Circle().strokeBorder(Sky.selectionStroke, lineWidth: 1))
+                        Circle().fill(Sky.segment).overlay(Circle().strokeBorder(Sky.segmentStroke, lineWidth: 1))
                     } else {
                         Circle().fill(Color.clear).glass(Circle())
                             .overlay(Circle().fill(Sky.ink.opacity(hovering ? 0.05 : 0)))
@@ -207,14 +212,14 @@ struct SegmentedPill<Value: Hashable>: View {
                 } label: {
                     Text(item.title)
                         .font(Sky.Font.label)
-                        .foregroundStyle(selected ? Sky.onSelection : Sky.secondary)
+                        .foregroundStyle(selected ? Sky.onSegment : Sky.secondary)
                         .padding(.horizontal, 16)
                         .frame(width: segmentWidth, height: height - 6)
                         .background {
                             if selected {
                                 Capsule(style: .continuous)
-                                    .fill(Sky.selection)
-                                    .overlay(Capsule(style: .continuous).strokeBorder(Sky.selectionStroke, lineWidth: 1))
+                                    .fill(Sky.segment)
+                                    .overlay(Capsule(style: .continuous).strokeBorder(Sky.segmentStroke, lineWidth: 1))
                                     .matchedGeometryEffect(id: "selection", in: namespace)
                             }
                         }
@@ -255,6 +260,54 @@ struct SkySwitchStyle: ToggleStyle {
         .accessibilityElement()
         .accessibilityAddTraits(.isToggle)
         .accessibilityValue(on ? "On" : "Off")
+    }
+}
+
+extension EnvironmentValues {
+    /// The sky's own light or dark, for text drawn straight on it (set by the screen layer).
+    @Entry var skyColorScheme: ColorScheme?
+}
+
+/// Text drawn straight on the sky (Home's clock and greeting, page titles, footnotes
+/// between panels) takes the sky's light or dark, not the chrome's: ink on a bright day,
+/// white at night, whatever the terminal's tone.
+struct OnSkyText: ViewModifier {
+    @Environment(\.skyColorScheme) private var scheme
+
+    func body(content: Content) -> some View {
+        if let scheme {
+            content.environment(\.colorScheme, scheme)
+        } else {
+            content
+        }
+    }
+}
+
+extension View {
+    func onSkyText() -> some View {
+        modifier(OnSkyText())
+    }
+}
+
+/// The sky's light or dark for chrome that needs it (glass over a mismatched sky). Set by
+/// the root view as the sun moves.
+@MainActor
+@Observable
+final class SkyContext {
+    static let shared = SkyContext()
+    var skyIsDark = true
+    private init() {}
+}
+
+/// The selection surface for rows and chips: a white card lifted by a soft shadow in light
+/// tone, frosted white with a hairline in dark tone.
+struct SelectionFill<S: InsettableShape>: View {
+    let shape: S
+
+    var body: some View {
+        shape.fill(Sky.selection)
+            .overlay(shape.strokeBorder(Sky.selectionStroke, lineWidth: 1))
+            .shadow(color: Sky.selectionShadow, radius: 6, y: 2)
     }
 }
 

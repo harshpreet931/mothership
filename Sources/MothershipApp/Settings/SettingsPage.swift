@@ -15,6 +15,7 @@ struct SettingsPage: View {
                     Text("Settings")
                         .font(Sky.Font.displayL)
                         .foregroundStyle(Sky.ink)
+                        .onSkyText()
                     Spacer()
                     VStack(alignment: .trailing, spacing: 2) {
                         MothershipLockup(fontSize: 17)
@@ -22,6 +23,7 @@ struct SettingsPage: View {
                             .font(Sky.Font.meta)
                             .foregroundStyle(Sky.tertiary)
                     }
+                    .onSkyText()
                 }
                 SegmentedPill(
                     items: SettingsTab.allCases.map { ($0, $0.title) },
@@ -127,6 +129,7 @@ struct AgentsSettings: View {
                 .font(.system(size: 12.5))
                 .foregroundStyle(Sky.secondary)
                 .padding(.horizontal, 22)
+                .onSkyText()
         }
         .sheet(item: $pending) { change in
             IntegrationConsentSheet(model: model, change: change) { pending = nil }
@@ -191,6 +194,7 @@ struct AppearanceSettings: View {
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Sky.secondary)
                     .padding(.leading, 22)
+                    .onSkyText()
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
                         ForEach(SkyPreset.allCases, id: \.self) { preset in
@@ -266,6 +270,13 @@ struct AppearanceSettings: View {
                         CircleButton(symbol: "plus", size: 30, label: "Larger") { setFont(fontSize + 1) }
                     }
                 }
+                GlassListRow(title: "Terminal follows the sky", subtitle: followsSkySubtitle) {
+                    Image(systemName: "sun.horizon").font(.system(size: 15)).frame(width: 24).foregroundStyle(Sky.ink.opacity(0.75))
+                } trailing: {
+                    Toggle("", isOn: Binding(get: { model.terminalFollowsSky }, set: { model.terminalFollowsSky = $0 }))
+                        .toggleStyle(SkySwitchStyle())
+                        .disabled(model.terminalDayTheme == nil && !model.terminalFollowsSky)
+                }
                 GlassListRow(title: "Tint terminals with sky", subtitle: "Cards at 88 % with a blur, for more atmosphere") {
                     Image(systemName: "cloud").font(.system(size: 16)).frame(width: 24).foregroundStyle(Sky.ink.opacity(0.75))
                 } trailing: {
@@ -282,8 +293,16 @@ struct AppearanceSettings: View {
         }
         .onAppear {
             fontSize = model.runtime.fontSize
-            themeChoice = model.runtime.themeChoice
+            themeChoice = model.baseThemeChoice
         }
+    }
+
+    /// "By day, Catppuccin Mocha becomes Catppuccin Latte", or why it can't.
+    private var followsSkySubtitle: String {
+        _ = themeChoice
+        let base = model.baseThemeName ?? "your theme"
+        guard let light = model.terminalDayTheme else { return "No light sibling known for \(base)" }
+        return "By day, \(base) becomes \(light); the chrome follows"
     }
 
     private var skyCaption: String {
@@ -310,7 +329,9 @@ struct AppearanceSettings: View {
 
     private func apply(_ choice: TerminalThemeChoice) {
         themeChoice = choice
+        model.baseThemeChoice = choice
         model.runtime.themeChoice = choice
+        model.applyTerminalSkyPairing()
         UserDefaults.standard.set(choice.storageValue, forKey: PreferenceKey.theme)
     }
 
@@ -387,6 +408,7 @@ struct GeneralSettings: View {
                 .font(.system(size: 12.5))
                 .foregroundStyle(Sky.secondary)
                 .padding(.horizontal, 22)
+                .onSkyText()
         }
     }
 }
