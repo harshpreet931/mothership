@@ -50,21 +50,21 @@ enum BuiltInThemes {
                 {"kind": "grain", "opacity": 0.02}
               ]},
             "goldenHour": {
-              "gradient": [{"color": "#3A60A7", "location": 0}, {"color": "#7E98CE", "location": 0.55}, {"color": "#F3BE99", "location": 1}],
+              "gradient": [{"color": "#3760AF", "location": 0}, {"color": "#7496D2", "location": 0.55}, {"color": "#F2C0A0", "location": 1}],
               "glows": [{"color": "#FFC27AAD", "center": {"x": 0.8, "y": 0.86}, "radius": 0.68}],
               "layers": [
-                {"kind": "clouds", "colors": ["#FFD9C2", "#D2C2C6"], "density": 0.5, "speed": 0.2, "opacity": 0.65},
+                {"kind": "clouds", "colors": ["#FFDAC5", "#CEC3CA"], "density": 0.5, "speed": 0.2, "opacity": 0.68},
                 {"kind": "grain", "opacity": 0.02}
               ]},
             "day": {
-              "gradient": [{"color": "#4A80CC", "location": 0}, {"color": "#8EB0DC", "location": 0.55}, {"color": "#DCE7F3", "location": 1}],
+              "gradient": [{"color": "#2B6AD8", "location": 0}, {"color": "#5C97E8", "location": 0.55}, {"color": "#CBE1F6", "location": 1}],
               "glows": [{"color": "#FFF4DC40", "center": {"x": 0.8, "y": 0.46}, "radius": 0.62}],
               "layers": [
-                {"kind": "clouds", "colors": ["#FFFFFF", "#D7E3F3"], "density": 0.5, "speed": 0.2, "opacity": 0.85},
+                {"kind": "clouds", "colors": ["#FFFFFF", "#C6DBF7"], "density": 0.5, "speed": 0.2, "opacity": 0.95},
                 {"kind": "grain", "opacity": 0.02}
               ]}
           }},
-          "palette": {"attention": "#FF8A33", "danger": "#F2555A", "lightGlass": "#FFFFFF8C", "darkGlass": "#14161B8C"},
+          "palette": {"attention": "#FF8A33", "danger": "#F2555A", "lightGlass": "#FFFFFF8C", "darkGlass": "#10141F9E"},
           "terminal": {"dark": "Catppuccin Mocha", "light": "Catppuccin Latte"}
         }
         """#

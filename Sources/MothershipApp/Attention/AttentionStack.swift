@@ -161,7 +161,7 @@ extension AttentionToast {
         }
     }
 
-    var statusColor: Color {
+    @MainActor var statusColor: Color {
         switch event.kind {
         case .permission, .needsInput: Sky.attention
         case .failed: Sky.danger

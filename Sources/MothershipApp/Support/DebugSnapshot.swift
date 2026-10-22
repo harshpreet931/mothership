@@ -34,6 +34,26 @@ enum DebugSnapshot {
             case "fleet": model.show(.fleet)
             case "palette": model.isPalettePresented = true
             case "composer": model.openComposer()
+            case "override":
+                // web-dashboard runs in Ember; ":on" selects it, ":off" stays on mothership.
+                if model.workspaces.count > 1 {
+                    let target = model.workspaces[1].id
+                    model.setWorkspaceTheme(target, to: "ember")
+                    if parts.count > 1, parts[1] == "on" { model.selectWorkspace(target) }
+                }
+            case "undo":
+                // Applies a theme the way the gallery does, then Edit → Undo: the window should
+                // be back in the theme it started with.
+                let undoManager = root.window?.undoManager
+                model.applyTheme(parts.count > 1 ? parts[1] : "aurora", undoManager: undoManager)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    // Up the responder chain from the window's first responder, as the Edit
+                    // menu's ⌘Z does (the snapshot window may not be key).
+                    let responder = root.window?.firstResponder
+                    let handled = responder?.tryToPerform(Selector(("undo:")), with: nil) == true
+                    NSLog("Mothership: undo from %@ handled %d → theme %@",
+                          String(describing: responder.map { type(of: $0) }), handled, model.themeID)
+                }
             case "longpath":
                 // A deep project folder (the user's own, when present) selected, to check row
                 // truncation and the card's top edge.
@@ -104,6 +124,12 @@ enum DebugSnapshot {
                     if let png = rep.representation(using: .png, properties: [:]) { try? png.write(to: url) }
                 }
             case "settings": model.openSettings(parts.count > 1 ? SettingsTab(rawValue: parts[1]) : .agents)
+            case "preview":
+                // The theme gallery while a card is hovered: the window previews that theme.
+                model.openSettings(.appearance)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    model.previewThemeID = parts.count > 1 ? parts[1] : "aurora"
+                }
             case "toasts":
                 // Stand-in attention events from whatever sessions exist, plus a finished
                 // one written in Markdown, to check the dock.
@@ -259,7 +285,7 @@ enum DebugSnapshot {
     }
 
     /// The sky's layers as they are this instant (twinkles mid-flight included).
-    private static func drawSky(_ sky: LivingSkyView, model: AppModel, size: NSSize, dark: Bool, context: CGContext) {
+    private static func drawSky(_ sky: any SkyRendering, model: AppModel, size: NSSize, dark: Bool, context: CGContext) {
         guard model.skyState.kind != .desktop else {
             NSColor(white: dark ? 0.16 : 0.82, alpha: 1).setFill()
             NSRect(origin: .zero, size: size).fill()

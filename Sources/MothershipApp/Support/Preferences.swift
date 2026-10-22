@@ -1,12 +1,39 @@
 import Foundation
 
+/// Where preferences live: the app's own domain normally, but a separate suite whenever
+/// `MOTHERSHIP_HOME` points at a scratch home (QA runs, snapshots), so test launches never
+/// read or write the user's real settings. Use this everywhere instead of
+/// `UserDefaults.standard`, and pass it as `store:` to `@AppStorage`.
+enum PreferenceStore {
+    // Safe: the reference never changes after first use, and UserDefaults is documented as
+    // thread-safe; only its Swift import lacks a Sendable annotation.
+    nonisolated(unsafe) static let defaults: UserDefaults = {
+        guard let home = ProcessInfo.processInfo.environment["MOTHERSHIP_HOME"], !home.isEmpty else {
+            return .standard
+        }
+        // FNV-1a: stable across launches, so a scratch home keeps its own settings.
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in home.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 0x0000_0100_0000_01b3
+        }
+        return UserDefaults(suiteName: "com.mothership.app.scratch-" + String(hash, radix: 16)) ?? .standard
+    }()
+}
+
 /// Every UserDefaults key Mothership reads, in one place. AttentionKit reads the
-/// notification keys directly from `UserDefaults.standard`.
+/// notification keys from the defaults it's handed (`PreferenceStore.defaults`).
 enum PreferenceKey {
     static let fontSize = "terminal.fontSize"
     static let theme = "terminal.theme"
-    /// `SkyPreset` raw value.
+    /// Pre-theme sky preset (`LegacySkyPreset`), read once to migrate.
     static let sky = "sky.preset"
+    /// Theme ids (ThemeKit): the chosen one, and the day/night schedule.
+    static let themeID = "theme.id"
+    static let themeScheduled = "theme.scheduled"
+    static let dayThemeID = "theme.day"
+    static let nightThemeID = "theme.night"
+    static let usesThemeTerminal = "theme.terminalColors"
     /// "Animate sky" (twinkling stars, drifting clouds).
     static let skyAnimates = "sky.animates"
     /// "Use my location" for the sun's position (off: guessed from the time zone).
@@ -37,7 +64,7 @@ enum PreferenceKey {
     }
 
     static func registerDefaults() {
-        UserDefaults.standard.register(defaults: [
+        PreferenceStore.defaults.register(defaults: [
             keepSessionsAlive: true,
             Notifications.enabled: true,
             Notifications.permissionRequests: true,

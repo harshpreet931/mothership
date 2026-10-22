@@ -74,7 +74,7 @@ struct ClockColumn: View {
 struct HomePanels: View {
     let model: AppModel
     let width: CGFloat
-    @AppStorage("home.hiddenPanels") private var hiddenRaw = ""
+    @AppStorage("home.hiddenPanels", store: PreferenceStore.defaults) private var hiddenRaw = ""
 
     private var hidden: Set<String> { Set(hiddenRaw.split(separator: ",").map(String.init)) }
 

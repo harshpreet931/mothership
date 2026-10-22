@@ -18,7 +18,7 @@ extension AppModel {
         let environment = ProcessInfo.processInfo.environment
         if environment["MOTHERSHIP_DEMO"] == "1" { return false }  // demo panes are throwaway
         if let override = environment["MOTHERSHIP_KEEP_SESSIONS"] { return override != "0" }
-        return UserDefaults.standard.object(forKey: Self.keepSessionsAliveKey) as? Bool ?? true
+        return PreferenceStore.defaults.object(forKey: Self.keepSessionsAliveKey) as? Bool ?? true
     }
 
     /// Whether this quit ends pane processes (persistence off, or "Quit and End All Sessions").

@@ -1,6 +1,19 @@
 import AppKit
 import CoreImage
 import QuartzCore
+import ThemeKit
+
+/// What draws the backdrop. `LivingSkyView` today (Mothership Sky natively, other themes'
+/// scenes as a fallback); BackdropKit's `BackdropView` slots in behind the same seam when
+/// its renderer lands (see `RootView.makeSky`).
+@MainActor
+protocol SkyRendering: NSView {
+    var animationEnabled: Bool { get set }
+    var isPaused: Bool { get }
+    func apply(_ state: SkyState, animated: Bool)
+    /// The current frame, animated values included, for debug snapshots (bottom-left origin).
+    func renderCurrentFrame(in context: CGContext)
+}
 
 /// The full-bleed sky, all Core Animation so it costs the app nothing per frame: a
 /// gradient, a glow where the sun is, drifting clouds by day, stars that twinkle (and the
@@ -10,7 +23,7 @@ import QuartzCore
 /// window is occluded or minimized, the app is hidden, in Low Power Mode, under Reduce
 /// Motion, or with "Animate sky" off. Palette changes crossfade over 2 s.
 @MainActor
-final class LivingSkyView: NSView {
+final class LivingSkyView: NSView, SkyRendering {
     private let scene = CALayer()
     private let gradient = CAGradientLayer()
     private let glow = CAGradientLayer()
@@ -23,6 +36,13 @@ final class LivingSkyView: NSView {
     private let moon = CALayer()
     private let meteor = CAGradientLayer()
     private let grain = CALayer()
+    /// A theme scene's glows, and a still sketch of the layers drawn only by BackdropKit
+    /// (aurora, nebula, sun, particles, grid, digital rain) until it lands.
+    private var sceneGlows: [CAGradientLayer] = []
+    private let extras = CALayer()
+    private var sceneMoon: UnitPoint2?
+    private var meteorsAllowed = true
+    private var starsShown = 0.0
 
     private(set) var state: SkyState?
     /// "Animate sky".
@@ -123,16 +143,26 @@ final class LivingSkyView: NSView {
         let previous = self.state
         self.state = state
         let fade = animated && previous != nil && !isPaused
+        // The sun moving crossfades slowly; a theme change (or a gallery preview) quickly.
+        let duration = previous?.themeID == state.themeID ? 2.0 : 0.6
         CATransaction.begin()
         CATransaction.setDisableActions(!fade)
-        CATransaction.setAnimationDuration(fade ? 2 : 0)
+        CATransaction.setAnimationDuration(fade ? duration : 0)
         CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeInEaseOut))
         isHidden = state.kind == .desktop
+        if state.kind == .scene, let themeScene = state.scene {
+            applyScene(themeScene)
+            CATransaction.commit()
+            updatePause()
+            return
+        }
+        resetSceneOnly()
         let palette = state.palette
         gradient.colors = [palette.top.cgColor(), palette.middle.cgColor(), palette.horizon.cgColor()]
         let strength = palette.glowStrength
         glow.colors = [palette.glow.cgColor(alpha: strength), palette.glow.cgColor(alpha: strength * 0.42), palette.glow.cgColor(alpha: 0)]
         night.opacity = Float(palette.stars)
+        starsShown = palette.stars
         // The moon waits for real darkness, then comes up with the stars.
         moon.opacity = Float(min(max((palette.stars - 0.8) / 0.15, 0), 1))
         cloudDeck.opacity = Float(palette.clouds)
@@ -148,6 +178,97 @@ final class LivingSkyView: NSView {
         updatePause()
     }
 
+    // MARK: Theme scenes
+
+    /// A theme's scene: its gradient and glows as layers, its stars, moon, clouds, shooting
+    /// stars and grain through the native layers, the rest as a still sketch.
+    private func applyScene(_ themeScene: ThemeKit.Scene) {
+        gradient.colors = themeScene.gradient.map(\.color.cgColor)
+        gradient.locations = themeScene.gradient.map { NSNumber(value: $0.location) }
+        glow.opacity = 0
+        func layer(_ kind: SceneLayer.Kind) -> SceneLayer? { themeScene.layers.first { $0.kind == kind } }
+        let stars = layer(.stars)
+        starsShown = stars.map { $0.opacity ?? 1 } ?? 0
+        night.opacity = Float(max(starsShown, layer(.moon) == nil ? 0 : 1))
+        for tier in fieldTiers { tier.isHidden = stars == nil }
+        for twinkler in twinklers { twinkler.isHidden = stars == nil }
+        if let moonLayer = layer(.moon) {
+            sceneMoon = moonLayer.position
+            moon.opacity = Float(moonLayer.opacity ?? 1)
+        } else {
+            sceneMoon = nil
+            moon.opacity = 0
+        }
+        meteorsAllowed = layer(.shootingStars) != nil
+        if let cloudLayer = layer(.clouds), let light = cloudLayer.colors?.first {
+            cloudDeck.opacity = Float(cloudLayer.opacity ?? 0.8)
+            let tint = RGB(r: light.red, g: light.green, b: light.blue)
+            if cloudTint.map({ $0.distance(to: tint) > 0.012 }) ?? true {
+                cloudTint = tint
+                let shadeColor = (cloudLayer.colors?.count ?? 0) > 1 ? cloudLayer.colors?[1] ?? light : light
+                let shade = RGB(r: shadeColor.red, g: shadeColor.green, b: shadeColor.blue)
+                for (cloud, spec) in zip(clouds, Self.cloudSpecs) {
+                    cloud.contents = Self.cloudImage(seed: spec.seed, tint: tint, shade: shade)
+                }
+            }
+        } else {
+            cloudDeck.opacity = 0
+        }
+        grain.opacity = Float(layer(.grain)?.opacity ?? 0.02)
+        layoutScene(themeScene)
+    }
+
+    private func layoutScene(_ themeScene: ThemeKit.Scene) {
+        let size = bounds.size
+        guard size.width > 0 else { return }
+        let glows = themeScene.glows ?? []
+        while sceneGlows.count < glows.count {
+            let layer = CAGradientLayer()
+            layer.type = .radial
+            layer.startPoint = CGPoint(x: 0.5, y: 0.5)
+            layer.endPoint = CGPoint(x: 1, y: 1)
+            layer.locations = [0, 0.4, 1]
+            scene.insertSublayer(layer, above: glow)
+            sceneGlows.append(layer)
+        }
+        for (index, layer) in sceneGlows.enumerated() {
+            guard index < glows.count else {
+                layer.opacity = 0
+                continue
+            }
+            let glowSpec = glows[index]
+            let radius = glowSpec.radius * max(size.width, size.height)
+            layer.opacity = 1
+            layer.colors = [glowSpec.color.cgColor, glowSpec.color.withAlpha(glowSpec.color.alpha * 0.4).cgColor, glowSpec.color.withAlpha(0).cgColor]
+            layer.bounds = CGRect(x: 0, y: 0, width: radius * 2, height: radius * 2)
+            layer.position = point(glowSpec.center.x * size.width, fromTop: glowSpec.center.y * size.height)
+        }
+        if extras.superlayer == nil { scene.insertSublayer(extras, below: night) }
+        if SceneSketch.hasExtras(themeScene) {
+            extras.contents = SceneSketch.image(of: themeScene, size: size, scale: 1, parts: .extras)
+            extras.contentsGravity = .resize
+            extras.isHidden = false
+        } else {
+            extras.contents = nil
+            extras.isHidden = true
+        }
+        layoutSunAndMoon()
+    }
+
+    /// Back to the native living sky.
+    private func resetSceneOnly() {
+        gradient.locations = [0, 0.55, 1]
+        glow.opacity = 1
+        for layer in sceneGlows { layer.opacity = 0 }
+        extras.contents = nil
+        extras.isHidden = true
+        sceneMoon = nil
+        meteorsAllowed = true
+        for tier in fieldTiers { tier.isHidden = false }
+        for twinkler in twinklers { twinkler.isHidden = false }
+        grain.opacity = 0.02
+    }
+
     // MARK: Layout
 
     override func layout() {
@@ -156,11 +277,12 @@ final class LivingSkyView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         scene.frame = bounds
-        for layer in [gradient, night, cloudDeck, grain] { layer.frame = bounds }
+        for layer in [gradient, night, cloudDeck, grain, extras] { layer.frame = bounds }
         if size != laidOutSize, size.width > 0, size.height > 0 {
             laidOutSize = size
             layoutStars(size)
             layoutClouds(size)
+            if let themeScene = state?.scene, state?.kind == .scene { layoutScene(themeScene) }
         }
         layoutSunAndMoon()
         CATransaction.commit()
@@ -237,8 +359,12 @@ final class LivingSkyView: NSView {
         glow.bounds = CGRect(x: 0, y: 0, width: size.width * 1.25, height: size.height * (0.9 + lift * 0.4))
         glow.position = CGPoint(x: x, y: y)
         // In the top bar's band, where the sky always shows: behind a card it would
-        // smudge the card's text.
-        moon.position = point((size.width * 0.36).rounded(), fromTop: Sky.topBarHeight / 2 + 1)
+        // smudge the card's text. A theme may place its own moon.
+        if let sceneMoon {
+            moon.position = point(sceneMoon.x * size.width, fromTop: sceneMoon.y * size.height)
+        } else {
+            moon.position = point((size.width * 0.36).rounded(), fromTop: Sky.topBarHeight / 2 + 1)
+        }
     }
 
     // MARK: Pausing
@@ -279,7 +405,7 @@ final class LivingSkyView: NSView {
 
     /// Whether anything should move right now.
     var shouldAnimate: Bool {
-        guard animationEnabled, state?.kind == .living, !SkyAccessibility.reduceMotion,
+        guard animationEnabled, state?.kind == .living || state?.kind == .scene, !SkyAccessibility.reduceMotion,
               !ProcessInfo.processInfo.isLowPowerModeEnabled else { return false }
         if ignoresOcclusion { return true }
         guard let window, !NSApp.isHidden, !window.isMiniaturized else { return false }
@@ -326,7 +452,7 @@ final class LivingSkyView: NSView {
 
     /// A thin streak across the upper sky, ~0.8 s, only when stars are out.
     func launchMeteor() {
-        guard !isPaused, (state?.palette.stars ?? 0) > 0.5, bounds.width > 200 else { return }
+        guard !isPaused, meteorsAllowed, starsShown > 0.5, bounds.width > 200 else { return }
         let angle = Double.random(in: 0.38 ... 0.6)
         let start = point(Double.random(in: 0.15 ... 0.7) * bounds.width, fromTop: Double.random(in: 0.02 ... 0.25) * bounds.height)
         let travel = Double.random(in: 220 ... 320)

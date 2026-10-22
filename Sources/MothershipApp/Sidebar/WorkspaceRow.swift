@@ -176,6 +176,23 @@ struct WorkspaceRow: View {
             NSPasteboard.general.setString(workspace.currentDirectory, forType: .string)
         }
         Divider()
+        Menu("Theme") {
+            let override = model.workspaceThemes[workspace.id]
+            Button {
+                model.setWorkspaceTheme(workspace.id, to: nil)
+            } label: {
+                if override == nil { Label("Same as everywhere", systemImage: "checkmark") } else { Text("Same as everywhere") }
+            }
+            Divider()
+            ForEach(model.themes) { theme in
+                Button {
+                    model.setWorkspaceTheme(workspace.id, to: theme.id)
+                } label: {
+                    if override == theme.id { Label(theme.name, systemImage: "checkmark") } else { Text(theme.name) }
+                }
+            }
+        }
+        Divider()
         Button("Close Workspace", role: .destructive) { model.closeWorkspace(workspace.id) }
     }
 }

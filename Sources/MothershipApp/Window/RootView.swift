@@ -10,7 +10,8 @@ final class RootView: NSView {
     let model: AppModel
     let router: CommandRouter
     let canvas: WorkspaceCanvas
-    let skyView = LivingSkyView(frame: .zero)
+    /// The backdrop, behind the `SkyRendering` seam (BackdropKit's view slots in here).
+    let skyView: any SkyRendering = RootView.makeSky()
     private let desktopBlur = NSVisualEffectView()
     private let screenHost: NSHostingView<ScreenLayer>
     private let sidebarHost: NSHostingView<SidebarView>
@@ -60,6 +61,13 @@ final class RootView: NSView {
 
     @available(*, unavailable)
     required init?(coder _: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    /// The one place the backdrop renderer is chosen. When BackdropKit's renderer lands,
+    /// an adapter around `BackdropView` (driven by `ThemeLibrary.scene(for:sunAltitude:)`)
+    /// is returned here instead.
+    private static func makeSky() -> any SkyRendering {
+        LivingSkyView(frame: .zero)
+    }
 
     private static func host<V: View>(_ view: V) -> NSHostingView<V> {
         let host = NSHostingView(rootView: view)
@@ -178,6 +186,8 @@ final class RootView: NSView {
         _ = model.toasts.count
         layoutToasts()
 
+        // The active theme: its palette drives the Sky tokens, its scene the backdrop.
+        model.applyThemeChrome()
         let sky = model.skyState
         skyView.apply(sky, animated: true)
         skyView.animationEnabled = model.skyClock.animates
@@ -203,7 +213,7 @@ final class RootView: NSView {
     /// Terminals pick their theme's light or dark variant from the Mac's appearance (or the
     /// sky's, with "Terminal follows the sky"), never from the chrome, which follows them.
     private func syncTerminalScheme() {
-        model.applyTerminalSkyPairing()
+        model.applyTerminalTheme()
         let wanted: NSAppearance.Name = model.terminalPrefersDark ? .darkAqua : .aqua
         guard canvas.appearance?.name != wanted else { return }
         canvas.appearance = NSAppearance(named: wanted)
