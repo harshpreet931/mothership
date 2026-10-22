@@ -234,7 +234,7 @@ struct CommandPaletteView: View {
                     .frame(height: 34)
                     .background {
                         if index == actionSelection {
-                            Capsule().fill(Sky.selection).overlay(Capsule().strokeBorder(Sky.selectionStroke, lineWidth: 1))
+                            SelectionFill(shape: Capsule())
                         }
                     }
                     .contentShape(Capsule())
@@ -391,7 +391,7 @@ private struct PaletteRow: View {
         .background {
             if selected {
                 let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
-                shape.fill(Sky.selection).overlay(shape.strokeBorder(Sky.selectionStroke, lineWidth: 1))
+                SelectionFill(shape: shape)
             }
         }
         .contentShape(Rectangle())

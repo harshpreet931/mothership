@@ -15,7 +15,7 @@ Glass, Linear, Raycast, Arc/Dia, Things 3, Superhuman, Family and Vercel Geist.
 |---|---|---|
 | 1 | **An atmospheric backdrop.** A full-bleed, heavily blurred sky photo is the canvas. Every panel floats over it with sky visible in the gutters. | A "Sky" layer behind the whole window (procedural `MeshGradient` presets, §7). Panes and the sidebar are floating cards with 10 pt gutters where the sky shows. |
 | 2 | **Frosted panels.** White glass at roughly 55–70 % tint, heavy blur, radius ≈ 24–28, no border, no shadow. | Sidebar, palette, composer, toasts and settings use glass. |
-| 3 | **Black is the only accent.** The selected segment is a solid near-black capsule with white text. Everything else is monochrome. | Selection is a solid **ink pill** that inverts in dark mode, slides between items with `matchedGeometryEffect`, and has no tinted highlights. |
+| 3 | **Black is the only accent.** The selected segment is a solid near-black capsule with white text. Everything else is monochrome. | The small segmented pill is a solid **ink pill** in light tone. Rows take a white card in light tone and frosted white in dark tone (§4a). Selection slides between items with `matchedGeometryEffect` and has no tinted highlights. |
 | 4 | **Pills and circles only.** Segmented pill (Chat · Projects), white "Connect" pills, frosted circle buttons (home ⌂, close ✕, back ‹), a capsule composer with `+` and mic. | Every control is a capsule or a circle. Nothing is a bordered rectangle. |
 | 5 | **Quiet, big type for ambient information.** A giant tight-tracked clock fills the idle state ("Wed / Oct 7 / 3:36 PM"). A serif headline appears in editorial moments ("hark can do more"). Page titles are large and regular weight, not bold ("Accounts"). | The ambient Home uses a display clock and a New York serif greeting. Page titles are 34 pt regular. |
 | 6 | **Chat bubbles.** The assistant gets an opaque white bubble on the left; the user gets a frosted pill on the right. Lots of air. | The tails of agent conversations in Fleet cards and the Home "Working now" panel use the same bubbles. |
@@ -110,6 +110,41 @@ Panel inner padding = **14**.
 - Workspace switch: content crossfades with scale 0.985 → 1.
 - Reduce Motion turns all of this into crossfades. Reduce Transparency turns glass into
   solid `bubble` surfaces.
+
+## 4a. Content-led tone (replaces "Day pairs with light chrome")
+
+The chrome's tone follows the **content**, not the sky. Mothership's main content is a
+terminal, so the glass, text colors, selection, composer, toasts, segmented pill and
+circles take the light or dark of the terminal theme's background (the resolved Ghostty
+theme or config). The sky keeps following the sun, around and through the glass.
+
+| Terminal | Sky | Result |
+|---|---|---|
+| Dark | Night, dusk | One dark surface; the sky glows through dark glass. |
+| Dark | Day | A sunny day seen from a cockpit: ink-navy glass (`#10141F` @ ~60 % + blur) over a saturated cornflower sky with visible clouds. |
+| Light | Day | Hark's own look: white glass, white cards. |
+| Light | Night | Light glass over a dark sky; white cards. |
+
+Why: a light chrome around a dark terminal is a near-black slab in a pale frame. Hark's
+light chrome works because Hark's content is light.
+
+Per tone:
+- **Selection** (rows, palette, lists, chips). Light tone: a white elevated card (the
+  `bubble`) with ink text and a soft shadow. Dark tone: frosted white 16 % with a 20 % white
+  hairline and white text.
+- **The ink pill** is kept only for small segmented controls and active circles in light
+  tone. Rows and cards never use it.
+- **Text drawn straight on the sky** (Home's clock and greeting, page titles, footnotes
+  between panels) follows the sky, not the tone: ink on a bright day, white at night.
+- **Composer:** tone-matched glass in its own 48 pt band under the cards. It never sits on
+  a terminal.
+- **Terminal variant:** a theme with light and dark variants follows the Mac's appearance,
+  as in Ghostty. It never follows the chrome, which follows it. "Terminal follows the sky"
+  (Appearance, off by default) pairs a dark theme with its light sibling by day, e.g.
+  Catppuccin Mocha → Latte. The chrome then follows.
+- **Day sky:** saturated cornflower at the zenith (`#2B6AD8`) fading to a pale horizon
+  (`#CBE1F6`). Two clouds drift through the top bar's band, where the sky is always
+  visible; the rest tint the glass from behind.
 
 ## 5. Layout
 
@@ -276,15 +311,16 @@ Each preset is a 3×3 `MeshGradient`:
 
 Add a 2 % noise overlay to prevent banding. Drift the mesh control points very slowly
 (about 60 s per cycle) only while idle. Freeze for 3 s after any keystroke, and freeze
-entirely on battery or with Reduce Motion. Day pairs with the light chrome, and Night,
-Dusk and Graphite pair with dark chrome. Auto follows the system appearance unless the
-user overrides it.
+entirely on battery or with Reduce Motion. The sky never decides the chrome's light or
+dark; the terminal does (§4a). Auto follows the sun.
 
 ## 8. The terminal inside the sky
 
 - The pane card's background is the Ghostty theme background, kept opaque for legibility.
-  Dark terminal cards floating on a Day sky are intentional and striking, like Hark's black
-  "Sign in to Google" pill on blue.
+  Its light or dark sets the chrome's tone (§4a), so card and chrome read as one surface.
+- The capsule strip at the top of a card (24 pt) takes space only while there's something
+  to show (an agent, a PR). Otherwise the card keeps an 8 pt inset and the hover capsule
+  floats over that corner.
 - An optional "Tint with sky" setting gives 88 % opacity and a blur for users who want
   more atmosphere.
 - Inner padding is 14/16, and the radius of the clipped content is 18.

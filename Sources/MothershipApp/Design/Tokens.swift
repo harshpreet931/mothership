@@ -56,13 +56,20 @@ enum Sky {
     static let hairline = Color(nsColor: .skyInk.withAlphaComponent(0.08))
     /// Recessed chip behind inline code.
     static let recess = Color(nsColor: .skyRecess)
-    /// Selection (sidebar row, segmented pill, palette row, active circle): solid ink by
-    /// Day; at night a frosted white 16 % with a 20 % white hairline and white text.
+    /// Selection (sidebar rows, palette rows, file lists, chips): a white elevated card in
+    /// light tone (Hark's bubble), frosted white 16 % with a 20 % hairline in dark tone.
     static let selection = Color(nsColor: .skySelection)
     /// Hairline around opaque cards floating over the sky (toasts).
     static let cardStroke = Color(nsColor: .skyCardStroke)
     static let selectionStroke = Color(nsColor: .skySelectionStroke)
     static let onSelection = Color(nsColor: .skyOnSelection)
+    /// Small segmented controls and active circles: the one place the ink pill stays
+    /// (light tone); frosted like selection in dark tone.
+    static let segment = Color(nsColor: .skySegment)
+    static let segmentStroke = Color(nsColor: .skySegmentStroke)
+    static let onSegment = Color(nsColor: .skyOnSegment)
+    /// Soft lift under light-tone selection cards.
+    static let selectionShadow = Color(nsColor: .skySelectionShadow)
     /// Switches: ink track by Day, a calm blue at night (white on white reads as off).
     static let accentToggle = Color(nsColor: .skyAccentToggle)
 
@@ -96,7 +103,9 @@ extension NSColor {
 
     static let skyInk = dynamic(light: rgb(0x0D0E11), dark: rgb(0xF4F5F7))
     static let skyOnInk = dynamic(light: rgb(0xFFFFFF), dark: rgb(0x0D0E11))
-    static let skyGlassFill = dynamic(light: rgb(0xFFFFFF, 0.55), dark: rgb(0x14161B, 0.55))
+    // Dark glass is a deep ink-navy at ~60 %: over a bright day sky it reads as tinted
+    // cockpit glass, not grey; at night it disappears into the sky.
+    static let skyGlassFill = dynamic(light: rgb(0xFFFFFF, 0.55), dark: rgb(0x10141F, 0.62))
     static let skyGlassDense = dynamic(light: rgb(0xF7F9FC, 0.9), dark: rgb(0x16181E, 0.9))
     static let skyGlassHighlight = dynamic(light: rgb(0xFFFFFF, 0.70), dark: rgb(0xFFFFFF, 0.08))
     static let skyBubble = dynamic(light: rgb(0xFFFFFF), dark: rgb(0x1D1F25))
@@ -108,9 +117,13 @@ extension NSColor {
     static let skyRecess = dynamic(light: rgb(0x0D0E11, 0.05), dark: rgb(0x000000, 0.28))
     static let skySecondary = dynamic(light: rgb(0x0D0E11, 0.68), dark: rgb(0xF4F5F7, 0.64))
     static let skyTertiary = dynamic(light: rgb(0x0D0E11, 0.58), dark: rgb(0xF4F5F7, 0.48))
-    static let skySelection = dynamic(light: rgb(0x0D0E11), dark: rgb(0xFFFFFF, 0.16))
-    static let skySelectionStroke = dynamic(light: rgb(0x0D0E11, 0), dark: rgb(0xFFFFFF, 0.2))
-    static let skyOnSelection = NSColor.white
+    static let skySelection = dynamic(light: rgb(0xFFFFFF), dark: rgb(0xFFFFFF, 0.16))
+    static let skySelectionStroke = dynamic(light: rgb(0x0D0E11, 0.05), dark: rgb(0xFFFFFF, 0.2))
+    static let skyOnSelection = dynamic(light: rgb(0x0D0E11), dark: rgb(0xFFFFFF))
+    static let skySegment = dynamic(light: rgb(0x0D0E11), dark: rgb(0xFFFFFF, 0.16))
+    static let skySegmentStroke = dynamic(light: rgb(0x0D0E11, 0), dark: rgb(0xFFFFFF, 0.2))
+    static let skyOnSegment = NSColor.white
+    static let skySelectionShadow = dynamic(light: rgb(0x0D0E11, 0.12), dark: rgb(0x000000, 0))
     static let skyCardStroke = dynamic(light: rgb(0x0D0E11, 0.06), dark: rgb(0xFFFFFF, 0.08))
     static let skyAccentToggle = dynamic(light: rgb(0x0D0E11), dark: rgb(0x5B7CF0))
     static let skyDiffAddFill = dynamic(light: rgb(0x2E9A6F, 0.09), dark: rgb(0x4CC495, 0.11))
