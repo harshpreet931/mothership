@@ -13,7 +13,7 @@ Glass, Linear, Raycast, Arc/Dia, Things 3, Superhuman, Family and Vercel Geist.
 
 | # | Observation | How Mothership uses it |
 |---|---|---|
-| 1 | **An atmospheric backdrop.** A full-bleed, heavily blurred sky photo is the canvas. Every panel floats over it with sky visible in the gutters. | A "Sky" layer behind the whole window (procedural `MeshGradient` presets, §7). Panes and the sidebar are floating cards with 10 pt gutters where the sky shows. |
+| 1 | **An atmospheric backdrop.** A full-bleed, heavily blurred sky photo is the canvas. Every panel floats over it with sky visible in the gutters. | A "Sky" layer behind the whole window (the active theme's scene, §7). Panes and the sidebar are floating cards with 10 pt gutters where the sky shows. |
 | 2 | **Frosted panels.** White glass at roughly 55–70 % tint, heavy blur, radius ≈ 24–28, no border, no shadow. | Sidebar, palette, composer, toasts and settings use glass. |
 | 3 | **Black is the only accent.** The selected segment is a solid near-black capsule with white text. Everything else is monochrome. | The small segmented pill is a solid **ink pill** in light tone. Rows take a white card in light tone and frosted white in dark tone (§4a). Selection slides between items with `matchedGeometryEffect` and has no tinted highlights. |
 | 4 | **Pills and circles only.** Segmented pill (Chat · Projects), white "Connect" pills, frosted circle buttons (home ⌂, close ✕, back ‹), a capsule composer with `+` and mic. | Every control is a capsule or a circle. Nothing is a bordered rectangle. |
@@ -276,8 +276,8 @@ ship trademarked artwork beyond simple marks. State overlays:
   "Hooks · 13 events · v2.1.306"), and a trailing pill.
 - The trailing pill reads Connect (secondary), Connected ✓ (ghost), or Repair (amber text)
   when another tool overwrote our hooks.
-- **Appearance:** sky preset swatches (circles), terminal theme, font size, and the
-  composer toggle.
+- **Appearance:** the theme gallery (§7), day and night themes, the theme's terminal colors,
+  then terminal theme, font size, and the composer toggle.
 
 ### Command palette (⌘K)
 - A centered glass panel, radius 24, width 640.
@@ -298,21 +298,42 @@ ship trademarked artwork beyond simple marks. State overlays:
 ### Empty states
 - A `serif.l` line plus one ink capsule action, e.g. "Nothing running. *Start a task*".
 
-## 7. Sky presets
+## 7. Themes (the sky and everything else)
 
-Each preset is a 3×3 `MeshGradient`:
-- **Day:** Hark blue sky. Cornflower `#5B8FD6` at the top, cloud white `#E9EEF4` at the
-  bottom right, steel `#8FA9C8` at the bottom left.
-- **Dusk:** peach `#F2B38A`, mauve `#B98BB5`, indigo `#4B4F8C`.
-- **Night:** `#0B1020`, `#1B2340`, `#2A1F3D`, plus a faint star grain.
-- **Graphite:** a near-flat `#1A1B1F` → `#24262B` for minimalists.
-- **Desktop:** see-through, using a behind-window blur of the user's wallpaper.
-- **Auto:** follows the time of day (Dawn → Day → Dusk → Night).
+The backdrop and the chrome's palette come from a **theme** (ThemeKit; authoring guide in
+`docs/themes.md`). **Mothership Sky** is the default: the living sky that follows the real sun
+from starry night through golden hour to day. Mothership draws it natively (§4a, `SunModel`).
+There are 18 more built-ins (Midnight, Aurora, Nebula, Deep Sea, Sakura, Ember, Monsoon,
+First Snow, Dune, Firefly Forest, Synthwave, Digital Rain, Mars, Lunar, Golden Hour,
+Graphite, Paper, Desktop), plus the user's own JSON files in `themes/` in the support folder,
+hot-reloaded.
 
-Add a 2 % noise overlay to prevent banding. Drift the mesh control points very slowly
-(about 60 s per cycle) only while idle. Freeze for 3 s after any keystroke, and freeze
-entirely on battery or with Reduce Motion. The sky never decides the chrome's light or
-dark; the terminal does (§4a). Auto follows the sun.
+A theme sets:
+- **Backdrop:** `fixed` (one scene), `sunCycle` (scenes per sun phase, blended continuously
+  by altitude) or `desktop` (behind-window blur of the wallpaper). Scenes are gradients,
+  glows and layers (stars, moon, clouds, aurora, particles, a retro grid…), all drawn by Core
+  Animation. Animation rests while the window is hidden, on Low Power, with Reduce Motion,
+  or with "Animate sky" off.
+- **Tone:** `auto` is the content-led rule (§4a): the chrome follows the terminal. `light` and
+  `dark` force it.
+- **Palette:** light and dark glass tints, an optional selection fill, and **attention** and
+  **danger**. Attention must stand apart from every color in the scene, so warm scenes (Ember,
+  Synthwave) use a cool teal instead of amber.
+- **Terminal pairing:** suggested Ghostty dark and light themes. "Use the theme's terminal
+  colors" applies them (off by default when the user's Ghostty config sets a theme); turning
+  it off restores the user's own.
+
+How themes are chosen:
+- **Settings → Appearance → Themes** is a gallery: a still of each scene, a mock of its glass
+  and terminal, filters (All, Animated, Still, Light, Dark) and search. Hovering a card
+  previews it on the whole window, and clicking applies it (⌘Z undoes).
+- **Day and night themes** switch at sunrise and sunset, like macOS appearance.
+- **Per workspace:** right-click a workspace → Theme. For example, a production workspace in
+  Ember, so it's unmistakable while it's selected.
+- **⌘K:** "Theme: …" and "Next theme".
+
+The old presets map to themes: Day → Mothership Sky, Dusk → Golden Hour, Night → Midnight,
+Graphite → Graphite, Desktop → Desktop.
 
 ## 8. The terminal inside the sky
 
