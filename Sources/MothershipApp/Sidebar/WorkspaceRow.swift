@@ -118,14 +118,23 @@ struct WorkspaceRow: View {
     }
 
     private func metaLine(branch: String?) -> some View {
-        HStack(spacing: 0) {
-            Text(PathDisplay.short(workspace.currentDirectory))
-                .truncationMode(.head)
+        // The path gives way first (middle-truncated); the branch keeps its room (capped),
+        // and its separator travels with it, so nothing dangles.
+        let path = PathDisplay.short(workspace.currentDirectory)
+        return HStack(spacing: 0) {
+            Text(path)
+                .truncationMode(.middle)
+                // A short path ("~", "~/Documents") never truncates.
+                .fixedSize(horizontal: path.count <= 12, vertical: false)
             if let branch {
-                Text("  ·  ")
-                Text("\(Image(systemName: "arrow.triangle.branch")) \(branch)")
-                    .truncationMode(.middle)
-                    .layoutPriority(-1)
+                HStack(spacing: 0) {
+                    Text("  ·  ")
+                    Text("\(Image(systemName: "arrow.triangle.branch")) \(branch)")
+                        .truncationMode(.middle)
+                }
+                .frame(maxWidth: 170, alignment: .leading)
+                .fixedSize(horizontal: branch.count < 14, vertical: false)
+                .layoutPriority(1)
             }
             let ports = model.ports(in: workspace)
             if !ports.isEmpty {
