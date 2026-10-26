@@ -77,7 +77,7 @@ from the last 32 MB on first sight, so token totals for very long sessions are p
 
 ## Titles and summaries
 
-Normal CLI sessions carry **no title record** (on this machine 116 of 120 CLI transcripts have
+Normal CLI sessions carry **no title record** (on a development machine, 116 of 120 CLI transcripts had
 none); `ai-title` / `custom-title` appear in Claude Desktop sessions and some agent sessions, and
 the status file `name` is a slug unless renamed. Precedence: user rename (`custom-title`,
 non-derived status `name`) > `ai-title`/`summary` (newest wins) > the earliest prompt with the

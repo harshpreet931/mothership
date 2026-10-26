@@ -16,9 +16,9 @@ assumptions to confirm in code before the design depends on them.
 - **cmux** (AGPL) already ships *libghostty + vertical tabs + OSC 9/99/777 notifications +
   a `notify` CLI for agent hooks + a scriptable in-app browser*. Its sidebar row shows the
   branch, PR, cwd, ports and last notification.
-- **Notch/menu-bar apps** (vibe-island, notchflow, etc.) install hooks into
-  `~/.claude`, `~/.codex` and `~/.config/opencode` to show agent status. Several of these have
-  already edited the config files on this machine, so the configs are contested.
+- **Notch/menu-bar apps** install hooks into `~/.claude`, `~/.codex` and
+  `~/.config/opencode` to show agent status. A developer machine often runs several of them,
+  so these configs are contested.
 
 The baseline (vertical tabs, splits, notifications, browser) is necessary but no longer a
 differentiator. **The edge has to be the agent layer:**
@@ -225,9 +225,9 @@ protocol AgentAdapter: Sendable {
 
 ### 5.5 Installing integrations without breaking anything
 
-This machine already has backups from four other tools that edited these files
-(`settings.json.notch-relay.backup`, `hooks.json.notchflow-backup`, `vibe-island.js`, …).
-Codex's single `notify` slot is already taken by Codex Computer Use. So:
+Other tools edit these files too: notch and menu-bar apps leave their own hook entries,
+backups and plugins behind. Codex's single `notify` slot is often already taken by another
+program. So:
 
 - **Ask for consent per agent**, show a diff, and write a timestamped backup.
 - **Merge, never replace.** Each Mothership entry is identifiable by its command

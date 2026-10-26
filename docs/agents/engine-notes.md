@@ -21,7 +21,7 @@
 
 ## File watching
 
-FSEvents can't register a client on this machine (macOS 27, ad-hoc signed processes:
+FSEvents can't register a client on the development machine (macOS 27, ad-hoc signed processes:
 `FSEventStreamStart` returns false for CLI, launchd jobs and LaunchServices-launched apps).
 The engine therefore watches with kqueue (`EVFILT_VNODE`: write/extend/delete/rename):
 

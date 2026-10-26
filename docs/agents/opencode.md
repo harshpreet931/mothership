@@ -3,7 +3,7 @@
 Sources: [Plugins](https://opencode.ai/docs/plugins/) (fetched 2026-10-21), the plugin/SDK type
 definitions shipped in `~/.config/opencode/node_modules/@opencode-ai/{plugin,sdk}` (1.4.7, incl.
 `sdk/dist/v2/gen/types.gen.d.ts`), `opencode --help`, the read-only schema of
-`~/.local/share/opencode/opencode.db`. A third-party plugin on this machine showed the runtime
+`~/.local/share/opencode/opencode.db`. A third-party plugin on a development machine showed the runtime
 shape; nothing was copied from it.
 
 ## Process model (v2)

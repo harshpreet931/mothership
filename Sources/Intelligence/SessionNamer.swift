@@ -33,7 +33,7 @@ public struct SessionNamer: Sendable {
         names the concrete subject: the project, feature, file, bug or tool. Prefer the user's \
         own nouns. Use title case only for names. No quotes, no ending punctuation, and no \
         generic words such as Session, Task, Help, Request, Question or Coding.
-        Good titles: Paper Prix F1 notebook; Sidebar overflow fix; Stripe webhook retries; \
+        Good titles: Kart Derby F1 notebook; Sidebar overflow fix; Stripe webhook retries; \
         Release build signing.
         """
 
@@ -92,7 +92,7 @@ public struct SessionNamer: Sendable {
 
 @Generable
 struct GeneratedTitle {
-    @Guide(description: "2 to 5 words naming the session's concrete subject, like Paper Prix F1 notebook")
+    @Guide(description: "2 to 5 words naming the session's concrete subject, like Kart Derby F1 notebook")
     var title: String
 }
 

@@ -209,7 +209,7 @@ struct AttentionGateTests {
     }
 
     @Test func plainBodies() {
-        #expect(AttentionText.body("I built **Paper Prix**: draw an F1 circuit…", fallback: "x") == "I built Paper Prix: draw an F1 circuit…")
+        #expect(AttentionText.body("I built **Kart Derby**: draw an F1 circuit…", fallback: "x") == "I built Kart Derby: draw an F1 circuit…")
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         #expect(AttentionText.body("# Done\n\nSaved to \(home)/Downloads/a.mp4", fallback: "x") == "Saved to ~/Downloads/a.mp4")
         let long = AttentionText.body(String(repeating: "word ", count: 60), fallback: "x")

@@ -21,7 +21,7 @@ final class FakeModel: Sendable {
 
     let state = Mutex(State())
 
-    init(titles: [String] = ["\"Paper Prix F1 notebook.\""], summaries: [String] = ["Summary: Added the pit-stop model and its tests."]) {
+    init(titles: [String] = ["\"Kart Derby F1 notebook.\""], summaries: [String] = ["Summary: Added the pit-stop model and its tests."]) {
         state.withLock {
             $0.titles = titles
             $0.summaries = summaries
@@ -78,7 +78,7 @@ struct GenerationTests {
         HookEnvelope(agent: .claude, event: event, payload: Data(json.utf8), surface: surface, agentPID: 4242, cwd: "/work/f1-notebook")
     }
 
-    func runTurn(_ engine: AgentEngine, session: String = "s-1", prompt: String = "make a notebook that simulates the paper prix f1 race", reply: String = "Done.") async {
+    func runTurn(_ engine: AgentEngine, session: String = "s-1", prompt: String = "make a notebook that simulates the kart derby f1 race", reply: String = "Done.") async {
         _ = await engine.handleHook(hook("UserPromptSubmit", #"{"session_id":"\#(session)","prompt":"\#(prompt)"}"#))
         _ = await engine.handleHook(hook("Stop", #"{"session_id":"\#(session)","last_assistant_message":"\#(reply)"}"#))
     }
@@ -91,9 +91,9 @@ struct GenerationTests {
         let model = FakeModel()
         let engine = makeEngine(home: home, model: model)
         await runTurn(engine, reply: "I created **notebook.ipynb** with a lap simulator.")
-        #expect(await waitUntil { await title(engine) == "Paper Prix F1 notebook" })
+        #expect(await waitUntil { await title(engine) == "Kart Derby F1 notebook" })
         let digest = try #require(model.digests.first)
-        #expect(digest.prompts == ["make a notebook that simulates the paper prix f1 race"])
+        #expect(digest.prompts == ["make a notebook that simulates the kart derby f1 race"])
         #expect(digest.replies == ["I created notebook.ipynb with a lap simulator."])
         #expect(digest.folder == "f1-notebook")
         #expect(await engine.record(for: AgentSessionKey(kind: .claude, sessionID: "s-1"))?.hasExplicitTitle == true)
@@ -113,7 +113,7 @@ struct GenerationTests {
         await runTurn(engine)
         try await Task.sleep(for: .milliseconds(300))
         let heuristic = await title(engine)
-        #expect(heuristic == "Make a notebook that simulates the paper prix…")
+        #expect(heuristic == "Make a notebook that simulates the kart derby…")
         #expect(model.digests.isEmpty)
         #expect(await engine.sessions().first?.summary == "Done.")
     }
@@ -125,7 +125,7 @@ struct GenerationTests {
         await runTurn(engine)
         try await Task.sleep(for: .milliseconds(150))
         let heuristic = await title(engine)
-        #expect(heuristic == "Make a notebook that simulates the paper prix…")
+        #expect(heuristic == "Make a notebook that simulates the kart derby…")
         #expect(await engine.generationStats().calls == 0)
     }
 
@@ -139,7 +139,7 @@ struct GenerationTests {
         #expect(await waitUntil { model.digests.count == 1 })
         try await Task.sleep(for: .milliseconds(150))
         let heuristic = await title(engine)
-        #expect(heuristic == "Make a notebook that simulates the paper prix…")
+        #expect(heuristic == "Make a notebook that simulates the kart derby…")
         // Same opening, more activity (past the queue's spacing): the failed input isn't sent again.
         _ = await engine.handleHook(hook("PreToolUse", #"{"session_id":"s-1","tool_name":"Bash","tool_input":{"command":"ls"}}"#))
         _ = await engine.handleHook(hook("PostToolUse", #"{"session_id":"s-1","tool_name":"Bash"}"#))
@@ -175,13 +175,13 @@ struct GenerationTests {
         let first = FakeModel()
         let engine = makeEngine(home: home, model: first, cache: cache)
         await runTurn(engine)
-        #expect(await waitUntil { await title(engine) == "Paper Prix F1 notebook" })
+        #expect(await waitUntil { await title(engine) == "Kart Derby F1 notebook" })
         // The cache is written once the queue is idle.
         #expect(await waitUntil { FileManager.default.fileExists(atPath: cache.path) })
         let second = FakeModel(titles: ["Something else"])
         let again = makeEngine(home: home, model: second, cache: cache)
         await runTurn(again)
-        #expect(await waitUntil { await title(again) == "Paper Prix F1 notebook" })
+        #expect(await waitUntil { await title(again) == "Kart Derby F1 notebook" })
         #expect(second.digests.isEmpty)
     }
 

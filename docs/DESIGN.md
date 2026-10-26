@@ -74,7 +74,7 @@ Panel inner padding = **14**.
 |---|---|---|
 | `display.xl` | SF Pro Display 64/60, regular, tracking −2 % | Ambient clock |
 | `display.l` | SF Pro Display 34, regular, −1 % | Page titles ("Integrations") |
-| `serif.l` | New York (`.serif`) 26, regular | Editorial headings ("Good evening, Harshpreet") |
+| `serif.l` | New York (`.serif`) 26, regular | Editorial headings ("Good evening, Ada") |
 | `title` | SF Pro 15, medium | Row titles, card titles |
 | `body` | SF Pro 13.5, regular | Bubbles, descriptions |
 | `meta` | SF Mono 11.5, regular, tabular | Paths, branches, tokens, timestamps |
@@ -246,7 +246,7 @@ ship trademarked artwork beyond simple marks. State overlays:
 ### Home (⌂) – ambient mission control
 - **Left column:** a `display.xl` clock and date, the same composition as Hark's idle
   screenshot.
-- **Above the panels:** a `serif.l` greeting ("Good evening, Harshpreet", using the first
+- **Above the panels:** a `serif.l` greeting ("Good evening, Ada", using the first
   name from `NSFullUserName()`), with a status sentence below it ("3 agents working · 1
   needs you").
 - **Panels (glass, radius 24, in a masonry grid):**

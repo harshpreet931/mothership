@@ -80,7 +80,7 @@ enum DebugSnapshot {
                 // A deep project folder (the user's own, when present) selected, to check row
                 // truncation and the card's top edge.
                 let home = FileManager.default.homeDirectoryForCurrentUser.path
-                let candidates = [home + "/Desktop/Juspay/xyne-spaces-test", FileManager.default.currentDirectoryPath]
+                let candidates = [home + "/Developer/acme/payments-platform-services", FileManager.default.currentDirectoryPath]
                 let path = candidates.first { FileManager.default.fileExists(atPath: $0) } ?? home
                 model.createWorkspace(cwd: path, focus: true)
             case "newtask":

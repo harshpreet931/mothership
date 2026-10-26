@@ -1,0 +1,47 @@
+name: Bug report
+description: Something doesn't work the way it should
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead. Screenshots help a lot.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a workspace in …
+        2. Run …
+        3. See …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Mothership version or commit
+      placeholder: "mship version, or git rev-parse --short HEAD"
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: "26.x"
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [Terminal, Agents / engine, Permissions / hooks, Sessions (mshipd), Tasks / worktrees, Browser, Themes / UI, mship CLI / MCP, Other]
+  - type: textarea
+    id: agents
+    attributes:
+      label: Agent CLIs involved (if any)
+      placeholder: "claude 2.1.x, codex 0.146, …"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: "Optional. `log show --last 5m --predicate 'subsystem == \"com.mothership.app\"'`. Please remove anything private."
+      render: text

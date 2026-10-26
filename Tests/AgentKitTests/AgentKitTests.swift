@@ -113,8 +113,8 @@ struct TitleCleanerTests {
     @Test func fileRefsQuotesAndURLs() {
         let video = title("@../05_AI/05_Draft_Vid.mp4 i have made this, now can you edit it into a short reel") ?? ""
         #expect(video.hasPrefix("I have made this, now can you edit"))
-        let quoted = title("\"Security & Cryptography Drill must-do PYQs Collapse all Multiple choice questions") ?? ""
-        #expect(quoted.hasPrefix("Security & Cryptography Drill must-do"))
+        let quoted = title("\"Database & Transactions Drill must-do PYQs Collapse all Multiple choice questions") ?? ""
+        #expect(quoted.hasPrefix("Database & Transactions Drill must-do"))
         #expect(!quoted.contains("\""))
         #expect(title("https://github.com/org/repo/pull/12 review this PR please") == "Review this PR please")
         #expect(title("@src/a.ts @src/b.ts why do these differ?") == "Why do these differ?")

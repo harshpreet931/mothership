@@ -270,7 +270,7 @@ enum BuiltInThemes {
           "tone": "dark", "tags": ["still", "dark", "night", "calm"],
           "backdrop": {"kind": "fixed", "scene": {
             "gradient": [{"color": "#000000", "location": 0}, {"color": "#020308", "location": 0.55}, {"color": "#0B0C10", "location": 0.78}, {"color": "#26272C", "location": 0.9}, {"color": "#3A3B41", "location": 1}],
-            "glows": [{"color": "#4A8FE033", "center": {"x": 0.72, "y": 0.3}, "radius": 0.16}],
+            "glows": [{"color": "#4A8FE033", "center": {"x": 0.2, "y": 0.17}, "radius": 0.16}],
             "layers": [
               {"kind": "stars", "colors": ["#FFFFFF", "#E4ECFF"], "density": 0.9, "speed": 0, "opacity": 0.9},
               {"kind": "moon", "colors": ["#4A8FE0", "#2E6FCF", "#F2F7FF", "#3E9E6A"], "position": {"x": 0.2, "y": 0.17}, "size": 0.13, "opacity": 1},

@@ -31,7 +31,7 @@ Mothership installs those 11; PermissionRequest timeout = hold + 60 s.
 Consequences: (1) Mothership appends its groups at the end of each event's list so existing
 groups keep their indices (and their trust); (2) after install the user must approve in `/hooks`;
 `integrationStatuses()` reports "trust pending" by looking for those keys; (3) `[features] hooks = false`
-is reported. `notify` in `config.toml` (already used by Codex Computer Use here) is never touched.
+is reported. `notify` in `config.toml` (often already used by another program) is never touched.
 
 Common input: `session_id` (subagent hooks carry the parent id), `transcript_path`, `cwd`,
 `hook_event_name`, `model`, `turn_id`, `permission_mode`. PermissionRequest:
