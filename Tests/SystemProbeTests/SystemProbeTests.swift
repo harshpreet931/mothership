@@ -255,10 +255,25 @@ struct HostAppTests {
         #expect(resolver.hostApp(for: 4, in: table) == "FakeTerm")
     }
 
-    @Test func resolvesRealVSCodeNameWhenInstalled() throws {
-        let vscode = "/Applications/Visual Studio Code.app"
-        try #require(FileManager.default.fileExists(atPath: vscode), "VS Code not installed")
-        #expect(HostAppResolver().displayName(forBundle: vscode) == "Visual Studio Code")
+    /// A bundle's name comes from its identifier, whatever its folder is called.
+    @Test func resolvesNameFromBundleIdentifier() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "hostapp-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        func bundle(_ name: String, identifier: String) throws -> String {
+            let contents = root.appending(path: "\(name).app/Contents", directoryHint: .isDirectory)
+            try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+            let plist = try PropertyListSerialization.data(fromPropertyList: ["CFBundleIdentifier": identifier], format: .xml, options: 0)
+            try plist.write(to: contents.appending(path: "Info.plist"))
+            return root.appending(path: "\(name).app").path
+        }
+        let resolver = HostAppResolver()
+        #expect(resolver.displayName(forBundle: try bundle("Code", identifier: "com.microsoft.VSCode")) == "Visual Studio Code")
+        #expect(resolver.displayName(forBundle: try bundle("Mystery Tool", identifier: "com.example.unknown")) == "Mystery Tool")
+    }
+
+    @Test(.enabled(if: FileManager.default.fileExists(atPath: "/Applications/Visual Studio Code.app"), "VS Code not installed"))
+    func resolvesRealVSCodeNameWhenInstalled() {
+        #expect(HostAppResolver().displayName(forBundle: "/Applications/Visual Studio Code.app") == "Visual Studio Code")
     }
 }
 
